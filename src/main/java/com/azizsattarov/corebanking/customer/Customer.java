@@ -1,43 +1,54 @@
 package com.azizsattarov.corebanking.customer;
 
+import com.azizsattarov.corebanking.account.Account;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.AllArgsConstructor;
+
 
 @Entity
 @Table(name = "customers")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Customer {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "customerId")
     private Long customerId;
 
-    @Column(nullable = false)
+    @Column(name = "firstName", nullable = false)
     private String firstName;
 
-    @Column(nullable = false)
+    @Column(name = "lastName", nullable = false)
     private String lastName;
 
-    @Column(nullable = false, updatable = false)
+    @Column(name = "createdAt", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // Required by JPA
-    protected Customer() {}
-
-    public Customer(String firstName, String lastName) {
-        this.firstName = firstName;
-        this.lastName = lastName;
-    }
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Account> accounts = new HashSet<>();
 
     @PrePersist
     void onCreate() {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Long getId() { return customerId; }
-    public String getFirstName() { return firstName; }
-    public String getLastName() { return lastName; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void addAccount(Account account) {
+        accounts.add(account);
+        account.setCustomer(this);
+    }
 
-    public void setFirstName(String firstName) { this.firstName = firstName; }
-    public void setLastName(String lastName) { this.lastName = lastName; }
+    public void removeAccount(Account account) {
+        accounts.remove(account);
+        account.setCustomer(null);
+    }
 }

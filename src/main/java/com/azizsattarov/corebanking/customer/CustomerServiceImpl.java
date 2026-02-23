@@ -2,6 +2,8 @@ package com.azizsattarov.corebanking.customer;
 
 import java.util.List;
 import java.util.Objects;
+
+import com.azizsattarov.corebanking.account.Account;
 import org.springframework.stereotype.Service;
 
 @Service

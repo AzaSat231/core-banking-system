@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.customer;
 
 import java.util.List;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -14,8 +15,9 @@ public class CustomerController {
     }
 
     @PostMapping
-    public Customer saveCustomer(@Valid @RequestBody Customer customer){
-        return customerService.saveCustomer(customer);
+    public ResponseEntity<Customer> saveCustomer(@Valid @RequestBody Customer customer){
+        Customer created = customerService.saveCustomer(customer);
+        return ResponseEntity.status(201).body(created);   // 201 - Created
     }
 
     @GetMapping
@@ -29,8 +31,8 @@ public class CustomerController {
     }
 
     @DeleteMapping("/{id}")
-    public String deleteCustomerById(@PathVariable("id") Long customerId) {
+    public ResponseEntity<Void> deleteCustomerById(@PathVariable("id") Long customerId) {
         customerService.deleteCustomerById(customerId);
-        return "Deleted Successfully";
+        return ResponseEntity.noContent().build();
     }
 }
