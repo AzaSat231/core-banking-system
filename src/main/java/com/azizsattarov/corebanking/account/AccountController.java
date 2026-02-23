@@ -1,5 +1,6 @@
 package com.azizsattarov.corebanking.account;
 
+import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,8 +16,12 @@ public class AccountController {
     }
 
     @PostMapping
-    public Account createAccount(@PathVariable Long customerId, @RequestBody CreateAccountRequest req) {
-        return accountService.createAccount(customerId, req.accountNumber(), req.initialBalance());
+    public ResponseEntity<AccountResponse> createAccount(
+            @PathVariable Long customerId,
+            @RequestBody CreateAccountRequest req
+    ) {
+        AccountResponse created = accountService.createAccount(customerId, req.accountNumber(), req.initialBalance());
+        return ResponseEntity.status(201).body(created);
     }
 
     @DeleteMapping("/{accountId}")

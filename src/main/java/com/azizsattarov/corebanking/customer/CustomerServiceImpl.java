@@ -3,7 +3,7 @@ package com.azizsattarov.corebanking.customer;
 import java.util.List;
 import java.util.Objects;
 
-import com.azizsattarov.corebanking.account.Account;
+import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,6 +22,21 @@ public class CustomerServiceImpl implements CustomerService{
     @Override
     public List<Customer> fetchCustomerList() {
         return customerRepository.findAll();
+    }
+
+    @Override
+    public List<AccountResponse> getAccountsByCustomer(Long customerId) {
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> new RuntimeException("Customer not found: " + customerId));
+
+        return customer.getAccounts().stream()
+                .map(a -> new AccountResponse(
+                        a.getAccountId(),
+                        a.getAccountNumber(),
+                        a.getBalance(),
+                        a.getCreatedAt()
+                ))
+                .toList();
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.account;
 
 import java.math.BigDecimal;
 
+import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.customer.CustomerRepository;
 import org.springframework.stereotype.Service;
@@ -19,7 +20,7 @@ public class AccountServiceImpl implements AccountService{
 
     @Override
     @Transactional
-    public Account createAccount(Long customerId, String accountNumber, BigDecimal initialBalance){
+    public AccountResponse createAccount(Long customerId, String accountNumber, BigDecimal initialBalance){
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new RuntimeException("Customer Not Found"));
 
@@ -33,7 +34,14 @@ public class AccountServiceImpl implements AccountService{
 
         customer.addAccount(account);
 
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+
+        return new AccountResponse(
+                saved.getAccountId(),
+                saved.getAccountNumber(),
+                saved.getBalance(),
+                saved.getCreatedAt()
+        );
     }
 
     @Override

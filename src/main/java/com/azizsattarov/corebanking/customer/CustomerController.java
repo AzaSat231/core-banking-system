@@ -1,6 +1,9 @@
 package com.azizsattarov.corebanking.customer;
 
 import java.util.List;
+
+import com.azizsattarov.corebanking.account.Account;
+import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +27,9 @@ public class CustomerController {
     public List<Customer> fetchDepartmentList() {
         return customerService.fetchCustomerList();
     }
+
+    @GetMapping("/{customerId}/accounts")
+    public List<AccountResponse> getAccountsByCustomer(@PathVariable Long customerId){return customerService.getAccountsByCustomer(customerId); }
 
     @PutMapping("/{id}")
     public Customer updateCustomer(@RequestBody Customer customer, @PathVariable("id") Long customerId) {
