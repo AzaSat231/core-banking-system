@@ -1,12 +1,15 @@
 package com.azizsattarov.corebanking.account;
 
 import com.azizsattarov.corebanking.customer.Customer;
+import com.azizsattarov.corebanking.transaction.Transaction;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -31,6 +34,9 @@ public class Account {
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
+    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Transaction> transactions = new HashSet<>();
+
     protected Account() {}
 
     public Account(String accountNumber, BigDecimal balance) {
@@ -41,6 +47,16 @@ public class Account {
     @PrePersist
     void onCreate() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    public void addTransaction(Transaction transaction) {
+        transactions.add(transaction);
+        transaction.setAccount(this);
+    }
+
+    public void removeTransaction(Transaction transaction) {
+        transactions.remove(transaction);
+        transaction.setAccount(null);
     }
 
 }
