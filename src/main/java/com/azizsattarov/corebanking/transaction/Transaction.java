@@ -18,6 +18,9 @@ public class Transaction {
     private Long transactionId;
 
     @Column(nullable = false)
+    private String referenceId;
+
+    @Column(nullable = false)
     private BigDecimal amount;
 
     @Column(nullable = false, updatable = false)

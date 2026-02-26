@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 public record TransactionResponse(
         Long transactionId,
+        String referenceId,
         BigDecimal amount,
         LocalDateTime createdAt,
         TransactionType transactionType
