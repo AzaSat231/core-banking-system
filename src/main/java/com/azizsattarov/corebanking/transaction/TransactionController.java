@@ -33,13 +33,11 @@ public class TransactionController {
         return ResponseEntity.status(201).body(withdrawn);
     }
 
-    @PostMapping("/transfers/{accountFromId}/{accountToId}/{amount}")
+    @PostMapping("/transfers")
     public ResponseEntity<TransferResponse> transfer(
-            @PathVariable Long accountFromId,
-            @PathVariable Long accountToId,
-            @RequestBody TransactionController.CreateTransactionRequest req
+            @RequestBody CreateTransferRequest req
     ){
-        TransferResponse transferResponse = transactionService.transfer(accountFromId, accountToId, req.amount);
+        TransferResponse transferResponse = transactionService.transfer(req.fromAccountId, req.toAccountId, req.amount);
         return ResponseEntity.status(201).body(transferResponse);
     }
 
@@ -47,5 +45,6 @@ public class TransactionController {
     public List<TransactionResponse> getTransactionHistory(@PathVariable Long accountId){return transactionService.getTransactionHistory(accountId); }
 
     public record CreateTransactionRequest(BigDecimal amount) {}
+    public record CreateTransferRequest(Long fromAccountId, Long toAccountId, BigDecimal amount) {}
 }
 
