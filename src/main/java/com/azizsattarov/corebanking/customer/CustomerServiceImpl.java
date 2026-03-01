@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
+import com.azizsattarov.corebanking.exception.NotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,7 +28,7 @@ public class CustomerServiceImpl implements CustomerService{
     @Override
     public List<AccountResponse> getAccountsByCustomer(Long customerId) {
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + customerId));
+                .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
 
         return customer.getAccounts().stream()
                 .map(a -> new AccountResponse(
@@ -42,7 +43,7 @@ public class CustomerServiceImpl implements CustomerService{
     @Override
     public Customer updateCustomer(Customer customer, Long customerId) {
         Customer cusDB = customerRepository.findById(customerId)
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + customerId));
+                .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
 
         if (Objects.nonNull(customer.getFirstName()) && !customer.getFirstName().isBlank()) {
             cusDB.setFirstName(customer.getFirstName());
@@ -56,6 +57,10 @@ public class CustomerServiceImpl implements CustomerService{
 
     @Override
     public void deleteCustomerById(Long customerId) {
+        if (customerRepository.findById(customerId).isEmpty()){
+            throw new NotFoundException("Customer not found: " + customerId);
+        }
+
         customerRepository.deleteById(customerId);
     }
 }

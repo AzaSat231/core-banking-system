@@ -4,6 +4,7 @@ import com.azizsattarov.corebanking.account.Account;
 import com.azizsattarov.corebanking.account.AccountRepository;
 import com.azizsattarov.corebanking.transaction.dto.TransactionResponse;
 import com.azizsattarov.corebanking.transaction.dto.TransferResponse;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,16 +16,20 @@ import java.util.UUID;
 public class TransactionServiceImpl implements TransactionService{
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final EntityManager em;
 
-    public TransactionServiceImpl(AccountRepository accountRepository, TransactionRepository transactionRepository) {
+    public TransactionServiceImpl(AccountRepository accountRepository, TransactionRepository transactionRepository, EntityManager em) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.em = em;
     }
 
     @Override
     @Transactional
     public TransactionResponse deposit(Long accountId, BigDecimal amountDeposit){
-        Account account = accountRepository.findById(accountId)
+//        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
+
+        Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new RuntimeException("Account Not Found"));
 
         if (amountDeposit.compareTo(BigDecimal.ZERO) <= 0){
@@ -57,7 +62,9 @@ public class TransactionServiceImpl implements TransactionService{
     @Override
     @Transactional
     public TransactionResponse withdraw(Long accountId, BigDecimal amountWithdraw) {
-        Account account = accountRepository.findById(accountId)
+//        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
+
+        Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new RuntimeException("Account Not Found"));
 
         if (amountWithdraw.compareTo(account.getBalance()) > 0){

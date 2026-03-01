@@ -1,5 +1,6 @@
 ### GET request to example server
 @customerId = 1
 GET http://localhost:8080/customers/{{customerId}}/accounts
+
 ###
 
