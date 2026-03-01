@@ -2,6 +2,8 @@ package com.azizsattarov.corebanking.transaction;
 
 import com.azizsattarov.corebanking.account.Account;
 import com.azizsattarov.corebanking.account.AccountRepository;
+import com.azizsattarov.corebanking.exception.BadRequestException;
+import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.dto.TransactionResponse;
 import com.azizsattarov.corebanking.transaction.dto.TransferResponse;
 import jakarta.persistence.EntityManager;
@@ -30,32 +32,28 @@ public class TransactionServiceImpl implements TransactionService{
 //        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
 
         Account account = accountRepository.findByIdForUpdate(accountId)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         if (amountDeposit.compareTo(BigDecimal.ZERO) <= 0){
-            throw new IllegalArgumentException("Deposit Amount must be positive");
+            throw new BadRequestException("Deposit Amount must be positive");
         }
 
         Transaction transaction = new Transaction();
         transaction.setAmount(amountDeposit);
         transaction.setTransactionType(TransactionType.DEPOSIT);
-
-        String ref = UUID.randomUUID().toString();
-
-        transaction.setReferenceId(ref);
+        transaction.setReferenceId(UUID.randomUUID().toString());
 
         account.setBalance(account.getBalance().add(amountDeposit));
-
         account.addTransaction(transaction);
 
-        Transaction saved = transactionRepository.save(transaction);
+        accountRepository.save(account);
 
         return new TransactionResponse(
-                saved.getTransactionId(),
-                saved.getReferenceId(),
-                saved.getAmount(),
-                saved.getCreatedAt(),
-                saved.getTransactionType()
+                transaction.getTransactionId(),
+                transaction.getReferenceId(),
+                transaction.getAmount(),
+                transaction.getCreatedAt(),
+                transaction.getTransactionType()
         );
     }
 
@@ -65,36 +63,32 @@ public class TransactionServiceImpl implements TransactionService{
 //        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
 
         Account account = accountRepository.findByIdForUpdate(accountId)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         if (amountWithdraw.compareTo(account.getBalance()) > 0){
-            throw new IllegalArgumentException("Withdraw Amount must be less than Balance Amount");
+            throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
         }
 
         if (amountWithdraw.compareTo(BigDecimal.ZERO) <= 0){
-            throw new IllegalArgumentException("Withdraw Amount must be positive");
+            throw new BadRequestException("Withdraw Amount must be positive");
         }
 
         Transaction transaction = new Transaction();
         transaction.setAmount(amountWithdraw);
         transaction.setTransactionType(TransactionType.WITHDRAW);
-
-        String ref = UUID.randomUUID().toString();
-
-        transaction.setReferenceId(ref);
+        transaction.setReferenceId(UUID.randomUUID().toString());
 
         account.setBalance(account.getBalance().subtract(amountWithdraw));
-
         account.addTransaction(transaction);
 
-        Transaction saved = transactionRepository.save(transaction);
+        accountRepository.save(account);
 
         return new TransactionResponse(
-                saved.getTransactionId(),
-                saved.getReferenceId(),
-                saved.getAmount(),
-                saved.getCreatedAt(),
-                saved.getTransactionType()
+                transaction.getTransactionId(),
+                transaction.getReferenceId(),
+                transaction.getAmount(),
+                transaction.getCreatedAt(),
+                transaction.getTransactionType()
         );
     }
 
@@ -102,11 +96,11 @@ public class TransactionServiceImpl implements TransactionService{
     @Transactional
     public TransferResponse transfer(Long accountFromId, Long accountToId, BigDecimal amountTransfer) {
         if (amountTransfer.compareTo(BigDecimal.ZERO) <= 0){
-            throw new IllegalArgumentException("Transfer Amount must be positive");
+            throw new BadRequestException("Transfer Amount must be positive");
         }
 
         if (accountFromId.equals(accountToId)){
-            throw new IllegalArgumentException("Transfer Accounts must be different");
+            throw new BadRequestException("Transfer Accounts must be different");
         }
 
         // Lock rows in a consistent order to avoid deadlocks
@@ -114,39 +108,34 @@ public class TransactionServiceImpl implements TransactionService{
         Long second = accountFromId < accountToId ? accountToId : accountFromId;
 
         Account a1 = accountRepository.findByIdForUpdate(first)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + first));
 
         Account a2 = accountRepository.findByIdForUpdate(second)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + second));
 
         Account accountFrom = accountFromId.equals(a1.getAccountId()) ? a1 : a2;
         Account accountTo = accountToId.equals(a1.getAccountId()) ? a1 : a2;
 
         if (amountTransfer.compareTo(accountFrom.getBalance()) > 0){
-            throw new IllegalArgumentException("Insufficient funds");
+            throw new BadRequestException("Insufficient funds");
         }
 
         String ref = UUID.randomUUID().toString();
 
-
         Transaction transactionFrom = new Transaction();
         transactionFrom.setAmount(amountTransfer);
         transactionFrom.setTransactionType(TransactionType.TRANSFER_OUT);
-
         transactionFrom.setReferenceId(ref);
-
-        accountFrom.setBalance(accountFrom.getBalance().subtract(amountTransfer));
-
-        accountFrom.addTransaction(transactionFrom);
 
         Transaction transactionTo = new Transaction();
         transactionTo.setAmount(amountTransfer);
         transactionTo.setTransactionType(TransactionType.TRANSFER_IN);
-
         transactionTo.setReferenceId(ref);
 
+        accountFrom.setBalance(accountFrom.getBalance().subtract(amountTransfer));
         accountTo.setBalance(accountTo.getBalance().add(amountTransfer));
 
+        accountFrom.addTransaction(transactionFrom);
         accountTo.addTransaction(transactionTo);
 
         accountRepository.save(accountFrom);
@@ -173,7 +162,7 @@ public class TransactionServiceImpl implements TransactionService{
     @Transactional
     public List<TransactionResponse> getTransactionHistory(Long accountId) {
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         return account.getTransactions().stream()
                 .map(t -> new TransactionResponse(
