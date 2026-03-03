@@ -2,8 +2,10 @@ package com.azizsattarov.corebanking.customer;
 
 import java.util.List;
 
-import com.azizsattarov.corebanking.account.Account;
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
+import com.azizsattarov.corebanking.customer.dto.CreateCustomerRequest;
+import com.azizsattarov.corebanking.customer.dto.CustomerResponse;
+import com.azizsattarov.corebanking.customer.dto.UpdateCustomerRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,13 +20,13 @@ public class CustomerController {
     }
 
     @PostMapping
-    public ResponseEntity<Customer> saveCustomer(@Valid @RequestBody Customer customer){
-        Customer created = customerService.saveCustomer(customer);
+    public ResponseEntity<CustomerResponse> saveCustomer(@Valid @RequestBody CreateCustomerRequest request){
+        CustomerResponse created = customerService.saveCustomer(request);
         return ResponseEntity.status(201).body(created);   // 201 - Created
     }
 
     @GetMapping
-    public List<Customer> fetchDepartmentList() {
+    public List<CustomerResponse> fetchDepartmentList() {
         return customerService.fetchCustomerList();
     }
 
@@ -32,8 +34,9 @@ public class CustomerController {
     public List<AccountResponse> getAccountsByCustomer(@PathVariable Long customerId){return customerService.getAccountsByCustomer(customerId); }
 
     @PutMapping("/{id}")
-    public Customer updateCustomer(@RequestBody Customer customer, @PathVariable("id") Long customerId) {
-        return customerService.updateCustomer(customer, customerId);
+    public ResponseEntity<CustomerResponse> updateCustomer(@PathVariable("id") Long customerId, @Valid @RequestBody UpdateCustomerRequest request) {
+        CustomerResponse updated = customerService.updateCustomer(customerId, request);
+        return ResponseEntity.status(200).body(updated);
     }
 
     @DeleteMapping("/{id}")

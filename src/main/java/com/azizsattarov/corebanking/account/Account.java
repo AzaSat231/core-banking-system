@@ -21,10 +21,10 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long accountId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String accountNumber;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal balance;
 
     @Column(nullable = false, updatable = false)

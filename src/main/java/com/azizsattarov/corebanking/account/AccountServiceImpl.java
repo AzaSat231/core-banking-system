@@ -3,8 +3,11 @@ package com.azizsattarov.corebanking.account;
 import java.math.BigDecimal;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
+import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
 import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.customer.CustomerRepository;
+import com.azizsattarov.corebanking.exception.BadRequestException;
+import com.azizsattarov.corebanking.exception.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,19 +21,23 @@ public class AccountServiceImpl implements AccountService{
         this.customerRepository = customerRepository;
     }
 
+    private String generateAccountNumber() {
+        return "ACC" + System.currentTimeMillis();
+    }
+
     @Override
     @Transactional
-    public AccountResponse createAccount(Long customerId, String accountNumber, BigDecimal initialBalance){
+    public AccountResponse createAccount(Long customerId, CreateAccountRequest request){
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new RuntimeException("Customer Not Found"));
+                .orElseThrow(() -> new NotFoundException("Customer Not Found: " + customerId));
 
-        if (initialBalance.compareTo(BigDecimal.ZERO) < 0){
-            throw new IllegalArgumentException("Balance cannot be negative");
+        if (request.initialBalance().compareTo(BigDecimal.ZERO) < 0){
+            throw new BadRequestException("Balance cannot be negative");
         }
 
         Account account = new Account();
-        account.setAccountNumber(accountNumber);
-        account.setBalance(initialBalance);
+        account.setAccountNumber(generateAccountNumber());
+        account.setBalance(request.initialBalance());
 
         customer.addAccount(account);
 
@@ -48,13 +55,13 @@ public class AccountServiceImpl implements AccountService{
     @Transactional
     public void removeAccount(Long customerId, Long accountId) {
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new RuntimeException("Customer Not Found"));
+                .orElseThrow(() -> new NotFoundException("Customer Not Found: " + customerId));
 
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         if (!account.getCustomer().getCustomerId().equals(customerId)){
-            throw new IllegalArgumentException("Account does not belong to this Customer");
+            throw new BadRequestException("Account does not belong to this Customer");
         }
 
         customer.removeAccount(account);

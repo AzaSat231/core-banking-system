@@ -2,6 +2,8 @@ package com.azizsattarov.corebanking.customer;
 
 import com.azizsattarov.corebanking.account.Account;
 import jakarta.persistence.*;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -30,6 +32,18 @@ public class Customer {
 
     @Column(name = "lastName", nullable = false)
     private String lastName;
+
+    @Column(nullable = false, unique = true)
+    private String nationalId;
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(nullable = false, unique = true)
+    private String phoneNumber;
+
+    @Column(nullable = false, unique = true)
+    private LocalDate dateOfBirth;
 
     @Column(name = "createdAt", nullable = false, updatable = false)
     private LocalDateTime createdAt;
