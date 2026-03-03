@@ -1,10 +1,10 @@
 package com.azizsattarov.corebanking.account;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
+import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/customers/{customerId}/accounts")
@@ -18,9 +18,9 @@ public class AccountController {
     @PostMapping
     public ResponseEntity<AccountResponse> createAccount(
             @PathVariable Long customerId,
-            @RequestBody CreateAccountRequest req
+            @Valid @RequestBody CreateAccountRequest request
     ) {
-        AccountResponse created = accountService.createAccount(customerId, req.accountNumber(), req.initialBalance());
+        AccountResponse created = accountService.createAccount(customerId, request);
         return ResponseEntity.status(201).body(created);
     }
 
@@ -30,5 +30,4 @@ public class AccountController {
         return ResponseEntity.noContent().build();
     }
 
-    public record CreateAccountRequest(String accountNumber, BigDecimal initialBalance) {}
 }

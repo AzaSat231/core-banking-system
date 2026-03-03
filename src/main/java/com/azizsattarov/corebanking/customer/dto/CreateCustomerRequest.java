@@ -1,5 +1,6 @@
 package com.azizsattarov.corebanking.customer.dto;
 
+import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
@@ -12,4 +13,4 @@ public record CreateCustomerRequest(
         @NotBlank @Email String email,
         @NotBlank String phoneNumber,
         @NotBlank LocalDate dateOfBirth
-) { }
+) {}
