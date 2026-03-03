@@ -1,11 +1,9 @@
 package com.azizsattarov.corebanking.transaction;
 
-import com.azizsattarov.corebanking.transaction.dto.TransactionResponse;
-import com.azizsattarov.corebanking.transaction.dto.TransferResponse;
+import com.azizsattarov.corebanking.transaction.dto.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -18,33 +16,32 @@ public class TransactionController {
     @PostMapping("/{accountId}/deposit")
     public ResponseEntity<TransactionResponse> deposit (
             @PathVariable Long accountId,
-            @RequestBody TransactionController.CreateTransactionRequest req
-    ){
-        TransactionResponse deposited = transactionService.deposit(accountId, req.amount);
+            @RequestBody DepositRequest depositRequest
+            ){
+        TransactionResponse deposited = transactionService.deposit(accountId, depositRequest);
         return ResponseEntity.status(201).body(deposited);
     }
 
     @PostMapping("/{accountId}/withdraw")
     public ResponseEntity<TransactionResponse> withdraw (
             @PathVariable Long accountId,
-            @RequestBody TransactionController.CreateTransactionRequest req
-    ){
-        TransactionResponse withdrawn = transactionService.withdraw(accountId, req.amount);
+            @RequestBody WithdrawRequest withdrawRequest
+            ){
+        TransactionResponse withdrawn = transactionService.withdraw(accountId, withdrawRequest);
         return ResponseEntity.status(201).body(withdrawn);
     }
 
-    @PostMapping("/transfers")
+    @PostMapping("/{fromAccountId}/transfers")
     public ResponseEntity<TransferResponse> transfer(
-            @RequestBody CreateTransferRequest req
+            @PathVariable Long fromAccountId,
+            @RequestBody TransferRequest transferRequest
     ){
-        TransferResponse transferResponse = transactionService.transfer(req.fromAccountId, req.toAccountId, req.amount);
+        TransferResponse transferResponse = transactionService.transfer(fromAccountId, transferRequest);
         return ResponseEntity.status(201).body(transferResponse);
     }
 
     @GetMapping("/{accountId}/transactions")
     public List<TransactionResponse> getTransactionHistory(@PathVariable Long accountId){return transactionService.getTransactionHistory(accountId); }
 
-    public record CreateTransactionRequest(BigDecimal amount) {}
-    public record CreateTransferRequest(Long fromAccountId, Long toAccountId, BigDecimal amount) {}
 }
 
