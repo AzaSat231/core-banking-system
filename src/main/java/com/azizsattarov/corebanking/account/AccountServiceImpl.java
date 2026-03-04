@@ -1,6 +1,8 @@
 package com.azizsattarov.corebanking.account;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
@@ -8,6 +10,7 @@ import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.customer.CustomerRepository;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
+import org.hibernate.annotations.SQLRestriction;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +25,7 @@ public class AccountServiceImpl implements AccountService{
     }
 
     private String generateAccountNumber() {
-        return "ACC" + System.currentTimeMillis();
+        return "ACC" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 
     @Override
@@ -64,6 +67,7 @@ public class AccountServiceImpl implements AccountService{
             throw new BadRequestException("Account does not belong to this Customer");
         }
 
+        account.setDeletedAt(LocalDateTime.now()); // soft delete
         customer.removeAccount(account);
 
     }
