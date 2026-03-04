@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.transaction;
 
 import com.azizsattarov.corebanking.account.Account;
 import com.azizsattarov.corebanking.account.AccountRepository;
+import com.azizsattarov.corebanking.account.AccountStatus;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.dto.*;
@@ -33,6 +34,10 @@ public class TransactionServiceImpl implements TransactionService{
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
+        if (!account.isActive()){
+            throw new BadRequestException("Deposit failed: This account is " + account.getAccountStatus());
+        }
+
         if (depositRequest.amountDeposit().compareTo(BigDecimal.ZERO) <= 0){
             throw new BadRequestException("Deposit Amount must be positive");
         }
@@ -63,6 +68,10 @@ public class TransactionServiceImpl implements TransactionService{
 
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        if (!account.isActive()){
+            throw new BadRequestException("Withdraw failed: This account is " + account.getAccountStatus());
+        }
 
         if (withdrawRequest.amountWithdraw().compareTo(account.getBalance()) > 0){
             throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
@@ -114,6 +123,14 @@ public class TransactionServiceImpl implements TransactionService{
 
         Account accountFrom = accountFromId.equals(a1.getAccountId()) ? a1 : a2;
         Account accountTo = transferRequest.toAccountId().equals(a1.getAccountId()) ? a1 : a2;
+
+        if (!accountFrom.isActive()){
+            throw new BadRequestException("Transfer failed: Account " + accountFrom.getAccountNumber() + " is " + accountFrom.getAccountStatus());
+        }
+
+        if (!accountTo.isActive()){
+            throw new BadRequestException("Transfer failed: Account " + accountTo.getAccountNumber() + " is " + accountTo.getAccountStatus());
+        }
 
         if (transferRequest.amount().compareTo(accountFrom.getBalance()) > 0){
             throw new BadRequestException("Insufficient funds");
