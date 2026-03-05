@@ -1,8 +1,6 @@
 package com.azizsattarov.corebanking.customer;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.customer.dto.CreateCustomerRequest;
@@ -70,6 +68,7 @@ public class CustomerServiceImpl implements CustomerService{
                 .map(a -> new AccountResponse(
                         a.getAccountId(),
                         a.getAccountNumber(),
+                        a.getAccountStatus(),
                         a.getBalance(),
                         a.getCreatedAt()
                 ))

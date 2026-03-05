@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
+import com.azizsattarov.corebanking.account.dto.UpdateAccountRequest;
 import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.customer.CustomerRepository;
 import com.azizsattarov.corebanking.exception.BadRequestException;
@@ -30,17 +31,15 @@ public class AccountServiceImpl implements AccountService{
 
     @Override
     @Transactional
-    public AccountResponse createAccount(Long customerId, CreateAccountRequest request){
+    public AccountResponse createAccount(Long customerId, CreateAccountRequest createAccountRequest){
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException("Customer Not Found: " + customerId));
 
-        if (request.initialBalance().compareTo(BigDecimal.ZERO) < 0){
+        if (createAccountRequest.initialBalance().compareTo(BigDecimal.ZERO) < 0){
             throw new BadRequestException("Balance cannot be negative");
         }
 
-        Account account = new Account();
-        account.setAccountNumber(generateAccountNumber());
-        account.setBalance(request.initialBalance());
+        Account account = new Account(generateAccountNumber(), createAccountRequest.initialBalance());
 
         customer.addAccount(account);
 
@@ -49,10 +48,30 @@ public class AccountServiceImpl implements AccountService{
         return new AccountResponse(
                 saved.getAccountId(),
                 saved.getAccountNumber(),
+                saved.getAccountStatus(),
                 saved.getBalance(),
                 saved.getCreatedAt()
         );
     }
+
+    @Override
+    @Transactional
+    public AccountResponse changeStatus(Long accountId, UpdateAccountRequest updateAccountRequest) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        account.setAccountStatus(updateAccountRequest.accountStatus());
+        Account saved = accountRepository.save(account);
+
+        return new AccountResponse(
+                saved.getAccountId(),
+                saved.getAccountNumber(),
+                saved.getAccountStatus(),
+                saved.getBalance(),
+                saved.getCreatedAt()
+        );
+    }
+
 
     @Override
     @Transactional
@@ -68,7 +87,7 @@ public class AccountServiceImpl implements AccountService{
         }
 
         account.setDeletedAt(LocalDateTime.now()); // soft delete
-        customer.removeAccount(account);
-
+        account.setAccountStatus(AccountStatus.CLOSED);
+        accountRepository.save(account);
     }
 }

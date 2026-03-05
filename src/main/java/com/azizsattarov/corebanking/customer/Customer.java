@@ -42,7 +42,7 @@ public class Customer {
     @Column(nullable = false, unique = true)
     private String phoneNumber;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = false)
     private LocalDate dateOfBirth;
 
     @Column(name = "createdAt", nullable = false, updatable = false)
