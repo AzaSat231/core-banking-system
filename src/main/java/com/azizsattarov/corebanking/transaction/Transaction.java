@@ -23,12 +23,22 @@ public class Transaction {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal balanceAfter;
+
+    @Column(nullable = true)
+    private String counterpartyAccountNumber;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TransactionType transactionType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TransactionStatus transactionStatus;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)

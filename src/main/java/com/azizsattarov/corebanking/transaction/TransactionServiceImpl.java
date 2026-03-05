@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.transaction;
 
 import com.azizsattarov.corebanking.account.Account;
 import com.azizsattarov.corebanking.account.AccountRepository;
+import com.azizsattarov.corebanking.account.AccountStatus;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.dto.*;
@@ -25,6 +26,21 @@ public class TransactionServiceImpl implements TransactionService{
         this.em = em;
     }
 
+    private String generateReferenceId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+    }
+
+    private Transaction setTransaction(BigDecimal amount, BigDecimal balanceAfter, TransactionType transactionType, TransactionStatus status, String referenceId){
+        Transaction transaction = new Transaction();
+        transaction.setAmount(amount);
+        transaction.setBalanceAfter(balanceAfter);
+        transaction.setTransactionType(transactionType);
+        transaction.setTransactionStatus(status);
+        transaction.setReferenceId(referenceId);
+
+        return transaction;
+    }
+
     @Override
     @Transactional
     public TransactionResponse deposit(Long accountId, DepositRequest depositRequest){
@@ -33,16 +49,45 @@ public class TransactionServiceImpl implements TransactionService{
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
+        if (!account.isActive()){
+            Transaction transaction = setTransaction(
+                    depositRequest.amountDeposit(),
+                    account.getBalance(),
+                    TransactionType.DEPOSIT,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            account.addTransaction(transaction);
+            accountRepository.save(account);
+            throw new BadRequestException("Deposit failed: This account is " + account.getAccountStatus());
+        }
+
         if (depositRequest.amountDeposit().compareTo(BigDecimal.ZERO) <= 0){
+            Transaction transaction = setTransaction(
+                    depositRequest.amountDeposit(),
+                    account.getBalance(),
+                    TransactionType.DEPOSIT,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            account.addTransaction(transaction);
+            accountRepository.save(account);
             throw new BadRequestException("Deposit Amount must be positive");
         }
 
-        Transaction transaction = new Transaction();
-        transaction.setAmount(depositRequest.amountDeposit());
-        transaction.setTransactionType(TransactionType.DEPOSIT);
-        transaction.setReferenceId(UUID.randomUUID().toString());
+        BigDecimal balanceAfter = account.getBalance().add(depositRequest.amountDeposit());
 
-        account.setBalance(account.getBalance().add(depositRequest.amountDeposit()));
+        Transaction transaction = setTransaction(
+                depositRequest.amountDeposit(),
+                balanceAfter,
+                TransactionType.DEPOSIT,
+                TransactionStatus.APPROVED,
+                generateReferenceId()
+        );
+
+        account.setBalance(balanceAfter);
         account.addTransaction(transaction);
 
         accountRepository.save(account);
@@ -64,20 +109,62 @@ public class TransactionServiceImpl implements TransactionService{
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
+        if (!account.isActive()){
+            Transaction transaction = setTransaction(
+                    withdrawRequest.amountWithdraw(),
+                    account.getBalance(),
+                    TransactionType.WITHDRAW,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            account.addTransaction(transaction);
+            accountRepository.save(account);
+
+            throw new BadRequestException("Withdraw failed: This account is " + account.getAccountStatus());
+        }
+
         if (withdrawRequest.amountWithdraw().compareTo(account.getBalance()) > 0){
+            Transaction transaction = setTransaction(
+                    withdrawRequest.amountWithdraw(),
+                    account.getBalance(),
+                    TransactionType.WITHDRAW,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            account.addTransaction(transaction);
+            accountRepository.save(account);
+
             throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
         }
 
         if (withdrawRequest.amountWithdraw().compareTo(BigDecimal.ZERO) <= 0){
+            Transaction transaction = setTransaction(
+                    withdrawRequest.amountWithdraw(),
+                    account.getBalance(),
+                    TransactionType.WITHDRAW,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            account.addTransaction(transaction);
+            accountRepository.save(account);
+
             throw new BadRequestException("Withdraw Amount must be positive");
         }
 
-        Transaction transaction = new Transaction();
-        transaction.setAmount(withdrawRequest.amountWithdraw());
-        transaction.setTransactionType(TransactionType.WITHDRAW);
-        transaction.setReferenceId(UUID.randomUUID().toString());
+        BigDecimal balanceAfter = account.getBalance().subtract(withdrawRequest.amountWithdraw());
 
-        account.setBalance(account.getBalance().subtract(withdrawRequest.amountWithdraw()));
+        Transaction transaction = setTransaction(
+                withdrawRequest.amountWithdraw(),
+                balanceAfter,
+                TransactionType.WITHDRAW,
+                TransactionStatus.APPROVED,
+                generateReferenceId()
+        );
+
+        account.setBalance(balanceAfter);
         account.addTransaction(transaction);
 
         accountRepository.save(account);
@@ -115,24 +202,76 @@ public class TransactionServiceImpl implements TransactionService{
         Account accountFrom = accountFromId.equals(a1.getAccountId()) ? a1 : a2;
         Account accountTo = transferRequest.toAccountId().equals(a1.getAccountId()) ? a1 : a2;
 
+        if (!accountFrom.isActive()){
+            Transaction declined = setTransaction(
+                    transferRequest.amount(),
+                    accountFrom.getBalance(),
+                    TransactionType.TRANSFER_OUT,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+            accountFrom.addTransaction(declined);
+            accountRepository.save(accountFrom);
+
+            throw new BadRequestException("Transfer failed: Account " + accountFrom.getAccountNumber() + " is " + accountFrom.getAccountStatus());
+        }
+
+        if (!accountTo.isActive()){
+            Transaction declined = setTransaction(
+                    transferRequest.amount(),
+                    accountTo.getBalance(),
+                    TransactionType.TRANSFER_IN,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+
+            accountTo.addTransaction(declined);
+            accountRepository.save(accountTo);
+
+            throw new BadRequestException("Transfer failed: Account " + accountTo.getAccountNumber() + " is " + accountTo.getAccountStatus());
+        }
+
         if (transferRequest.amount().compareTo(accountFrom.getBalance()) > 0){
+            Transaction declined = setTransaction(
+                    transferRequest.amount(),
+                    accountFrom.getBalance(),
+                    TransactionType.TRANSFER_OUT,
+                    TransactionStatus.DECLINED,
+                    generateReferenceId()
+            );
+            accountFrom.addTransaction(declined);
+            accountRepository.save(accountFrom);
+
             throw new BadRequestException("Insufficient funds");
         }
 
-        String ref = UUID.randomUUID().toString();
+        String ref = generateReferenceId();
 
-        Transaction transactionFrom = new Transaction();
-        transactionFrom.setAmount(transferRequest.amount());
-        transactionFrom.setTransactionType(TransactionType.TRANSFER_OUT);
-        transactionFrom.setReferenceId(ref);
+        BigDecimal balanceAfterFrom = accountFrom.getBalance().subtract(transferRequest.amount());
+        BigDecimal balanceAfterTo = accountTo.getBalance().add(transferRequest.amount());
 
-        Transaction transactionTo = new Transaction();
-        transactionTo.setAmount(transferRequest.amount());
-        transactionTo.setTransactionType(TransactionType.TRANSFER_IN);
-        transactionTo.setReferenceId(ref);
+        Transaction transactionFrom = setTransaction(
+                transferRequest.amount(),
+                balanceAfterFrom,
+                TransactionType.TRANSFER_OUT,
+                TransactionStatus.APPROVED,
+                ref
+        );
 
-        accountFrom.setBalance(accountFrom.getBalance().subtract(transferRequest.amount()));
-        accountTo.setBalance(accountTo.getBalance().add(transferRequest.amount()));
+        transactionFrom.setCounterpartyAccountNumber(accountTo.getAccountNumber());
+
+        Transaction transactionTo = setTransaction(
+                transferRequest.amount(),
+                balanceAfterTo,
+                TransactionType.TRANSFER_IN,
+                TransactionStatus.APPROVED,
+                ref
+        );
+
+        transactionTo.setCounterpartyAccountNumber(accountFrom.getAccountNumber());
+
+        accountFrom.setBalance(balanceAfterFrom);
+        accountTo.setBalance(balanceAfterTo);
 
         accountFrom.addTransaction(transactionFrom);
         accountTo.addTransaction(transactionTo);

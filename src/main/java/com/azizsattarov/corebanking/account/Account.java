@@ -5,6 +5,7 @@ import com.azizsattarov.corebanking.transaction.Transaction;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ import java.util.Set;
 @Getter
 @Setter
 @Table(name = "accounts")
+@SQLRestriction("deleted_at IS NULL")
 public class Account {
 
     @Id
@@ -27,8 +29,15 @@ public class Account {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal balance;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AccountStatus accountStatus;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
@@ -42,6 +51,7 @@ public class Account {
     public Account(String accountNumber, BigDecimal balance) {
         this.accountNumber = accountNumber;
         this.balance = balance;
+        this.accountStatus = AccountStatus.ACTIVE; // add this
     }
 
     @PrePersist
@@ -57,6 +67,10 @@ public class Account {
     public void removeTransaction(Transaction transaction) {
         transactions.remove(transaction);
         transaction.setAccount(null);
+    }
+
+    public boolean isActive() {
+        return this.accountStatus == AccountStatus.ACTIVE;
     }
 
 }
