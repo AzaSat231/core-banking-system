@@ -1,57 +1,254 @@
-# Core Banking System
+# Core Banking API
 
-A RESTful backend application built with **Spring Boot** that provides foundational banking operations — customer management, account lifecycle, and financial transactions with full ACID guarantees.
+A production-grade RESTful banking system built with Spring Boot 3, PostgreSQL, and Docker.
+The system handles customer lifecycle management, bank account operations, and financial transactions
+including deposits, withdrawals, and peer-to-peer transfers — with full concurrency safety.
+
+---
+
+## Table of Contents
+
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Data Model](#data-model)
+- [API Reference](#api-reference)
+- [Request & Response Schemas](#request--response-schemas)
+- [Concurrency & Transaction Safety](#concurrency--transaction-safety)
+- [Exception Handling](#exception-handling)
+- [Getting Started](#getting-started)
+- [Example Usage](#example-usage)
+- [Design Decisions](#design-decisions)
+- [Potential Improvements](#potential-improvements)
 
 ---
 
 ## Tech Stack
 
-- **Java 17+** / Spring Boot 3.x
-- **Spring Data JPA** + Hibernate
-- **PostgreSQL**
-- **Lombok**
-- **Jakarta Bean Validation**
-
----
-
-## Features
-
-- Customer management with soft-delete (`deleted_at` + `@SQLRestriction`)
-- Account lifecycle: create, freeze, close, soft-delete
-- Deposits, withdrawals, and peer-to-peer transfers with balance tracking
-- Deadlock-safe transfers via ordered pessimistic write locks
-- Full transaction history per account, ordered by date descending
-- Validation on all request bodies
+| Technology | Purpose |
+|---|---|
+| Java 17 | LTS release; records used for immutable DTOs |
+| Spring Boot 3 | Core framework — dependency injection, embedded Tomcat, auto-configuration |
+| Spring Data JPA | Repository abstraction over Hibernate ORM; pessimistic locking via `@Lock` |
+| PostgreSQL 16 | Primary relational database |
+| Docker / Compose | Single-command local environment bootstrap |
+| Lombok | Reduces entity boilerplate (`@Getter`, `@Setter`, `@NoArgsConstructor`, etc.) |
+| Jakarta Validation | Bean Validation 3.0 constraints on all request DTOs |
+| Hibernate `@SQLRestriction` | Transparent soft-delete filtering on `Customer` and `Account` entities |
 
 ---
 
 ## Project Structure
 
 ```
-src/main/java/com/azizsattarov/corebanking/
+com.azizsattarov.core-banking
 ├── customer/
-│   ├── Customer.java                  # JPA entity with soft delete
-│   ├── CustomerController.java        # REST endpoints
-│   ├── CustomerService.java           # Interface
-│   ├── CustomerServiceImpl.java       # Business logic
-│   ├── CustomerRepository.java        # Spring Data JPA
-│   └── CustomerStatus.java            # ACTIVE, CLOSED
+│   ├── Customer.java
+│   ├── CustomerStatus.java             ACTIVE, CLOSED
+│   ├── CustomerRepository.java
+│   ├── CustomerService.java
+│   ├── CustomerServiceImpl.java
+│   ├── CustomerController.java
+│   └── dto/
+│       ├── CreateCustomerRequest.java
+│       ├── UpdateCustomerRequest.java
+│       └── CustomerResponse.java
 ├── account/
-│   ├── Account.java                   # JPA entity with balance & status
-│   ├── AccountController.java         # REST endpoints
-│   ├── AccountService.java            # Interface
-│   ├── AccountServiceImpl.java        # Business logic
-│   ├── AccountRepository.java         # Includes pessimistic lock query
-│   └── AccountStatus.java             # ACTIVE, FROZEN, CLOSED
-└── transaction/
-    ├── Transaction.java               # JPA entity linked to Account
-    ├── TransactionController.java     # REST endpoints
-    ├── TransactionService.java        # Interface
-    ├── TransactionServiceImpl.java    # Core financial logic
-    ├── TransactionRepository.java     # Custom JPQL history query
-    ├── TransactionType.java           # DEPOSIT, WITHDRAW, TRANSFER_IN, TRANSFER_OUT
-    └── TransactionStatus.java         # APPROVED, DECLINED
+│   ├── Account.java
+│   ├── AccountStatus.java              ACTIVE, FROZEN, CLOSED
+│   ├── AccountRepository.java          Includes findByIdForUpdate (PESSIMISTIC_WRITE)
+│   ├── AccountService.java
+│   ├── AccountServiceImpl.java
+│   ├── AccountController.java
+│   └── dto/
+│       ├── CreateAccountRequest.java
+│       ├── UpdateAccountRequest.java
+│       └── AccountResponse.java
+├── transaction/
+│   ├── Transaction.java
+│   ├── TransactionType.java            DEPOSIT, WITHDRAW, TRANSFER_IN, TRANSFER_OUT
+│   ├── TransactionStatus.java          APPROVED, DECLINED
+│   ├── TransactionRepository.java      Includes findByAccountId JPQL query
+│   ├── TransactionService.java
+│   ├── TransactionServiceImpl.java
+│   ├── TransactionController.java
+│   └── dto/
+│       ├── DepositRequest.java
+│       ├── WithdrawRequest.java
+│       ├── TransferRequest.java
+│       ├── TransactionResponse.java
+│       └── TransferResponse.java
+└── exception/
+    ├── BadRequestException.java        Maps to HTTP 400
+    ├── NotFoundException.java          Maps to HTTP 404
+    ├── GlobalExceptionHandler.java     @RestControllerAdvice
+    └── dto/
+        └── ErrorResponse.java
 ```
+
+---
+
+## Data Model
+
+### Entity Relationships
+
+```
+Customer  1 ──── * Account
+Account   1 ──── * Transaction
+```
+
+Relationships are managed bidirectionally. Helper methods (`addAccount`, `addTransaction`) keep both sides of each association in sync and ensure cascade operations behave correctly.
+
+### Soft Delete
+
+Both `Customer` and `Account` implement soft deletion. Rather than issuing a `DELETE` statement, a `deleted_at` timestamp is written to the record and the status is set to `CLOSED`. Hibernate's `@SQLRestriction("deleted_at IS NULL")` annotation filters all queries transparently — deleted records remain in the database for audit purposes but are invisible to the application layer.
+
+### Key Fields
+
+| Entity | Field | Notes |
+|---|---|---|
+| `Account` | `accountNumber` | `ACC` prefix followed by 12 random uppercase hex characters |
+| `Account` | `balance` | `BigDecimal(19,4)` — avoids floating-point rounding errors on monetary values |
+| `Transaction` | `referenceId` | 12-character UUID fragment; the same value is written to both sides of a transfer |
+| `Transaction` | `balanceAfter` | Snapshot of the account balance at the time of the transaction |
+| `Transaction` | `counterpartyAccountNumber` | Populated on `TRANSFER_IN` and `TRANSFER_OUT` for reconciliation |
+
+---
+
+## API Reference
+
+### Customers
+
+Base path: `/customers`
+
+| Method | Endpoint | Description | Response |
+|---|---|---|---|
+| `POST` | `/customers` | Create a new customer | `201 CustomerResponse` |
+| `GET` | `/customers` | List all active customers | `200 List<CustomerResponse>` |
+| `GET` | `/customers/{id}/accounts` | List all accounts belonging to a customer | `200 List<AccountResponse>` |
+| `PUT` | `/customers/{id}` | Update customer contact information | `200 CustomerResponse` |
+| `DELETE` | `/customers/{id}` | Soft-delete a customer | `204 No Content` |
+
+### Accounts
+
+Base path: `/customers/{customerId}/accounts`
+
+| Method | Endpoint | Description | Response |
+|---|---|---|---|
+| `POST` | `/` | Open a new bank account | `201 AccountResponse` |
+| `PATCH` | `/{accountId}/status` | Change account status (`ACTIVE`, `FROZEN`, `CLOSED`) | `200 AccountResponse` |
+| `DELETE` | `/{accountId}` | Soft-delete an account | `204 No Content` |
+
+### Transactions
+
+Base path: `/accounts/{accountId}`
+
+| Method | Endpoint | Description | Response |
+|---|---|---|---|
+| `POST` | `/{accountId}/deposit` | Deposit funds into an account | `201 TransactionResponse` |
+| `POST` | `/{accountId}/withdraw` | Withdraw funds from an account | `201 TransactionResponse` |
+| `POST` | `/{fromAccountId}/transfers` | Transfer funds to another account | `201 TransferResponse` |
+| `GET` | `/{accountId}/transactions` | Retrieve transaction history, ordered newest first | `200 List<TransactionResponse>` |
+
+---
+
+## Request & Response Schemas
+
+### CreateCustomerRequest
+
+```json
+{
+  "firstName":   "Aziz",
+  "lastName":    "Sattarov",
+  "nationalId":  "12345678901",
+  "email":       "aziz@bank.com",
+  "phoneNumber": "+998901234567",
+  "dateOfBirth": "1995-04-15"
+}
+```
+
+### CreateAccountRequest
+
+```json
+{
+  "initialBalance": 1000.00
+}
+```
+
+### DepositRequest
+
+```json
+{
+  "amountDeposit": 500.00
+}
+```
+
+### WithdrawRequest
+
+```json
+{
+  "amountWithdraw": 200.00
+}
+```
+
+### TransferRequest
+
+```json
+{
+  "toAccountId": 2,
+  "amount": 300.00
+}
+```
+
+### ErrorResponse
+
+Returned on all error paths — no plain-text error strings anywhere in the API.
+
+```json
+{
+  "timestamp": "2025-06-01T14:32:00",
+  "status":    400,
+  "error":     "Bad Request",
+  "message":   "Insufficient funds",
+  "path":      "/accounts/1/withdraw"
+}
+```
+
+---
+
+## Concurrency & Transaction Safety
+
+### Pessimistic Locking
+
+All balance-mutating operations (deposit, withdraw, transfer) acquire a `SELECT ... FOR UPDATE` lock via `AccountRepository.findByIdForUpdate()`. This prevents lost updates when two concurrent requests attempt to modify the same account balance simultaneously.
+
+### Deadlock Prevention in Transfers
+
+A transfer acquires locks on two accounts. To eliminate circular-wait deadlocks, locks are always acquired in ascending account ID order — regardless of which account is the sender or receiver:
+
+```java
+Long first  = Math.min(fromAccountId, toAccountId);
+Long second = Math.max(fromAccountId, toAccountId);
+```
+
+This enforces a globally consistent lock-acquisition order across all concurrent threads.
+
+### Transactional Boundaries
+
+- All write operations are annotated with `@Transactional`. Both sides of a transfer either commit together or neither does.
+- Read-only operations use `@Transactional(readOnly = true)` to enable Hibernate performance optimisations.
+
+---
+
+## Exception Handling
+
+All exceptions are centralised in `GlobalExceptionHandler` (`@RestControllerAdvice`). Every error path returns a structured `ErrorResponse` with a timestamp, HTTP status code, reason phrase, descriptive message, and the request path.
+
+| Exception | HTTP Status | Trigger |
+|---|---|---|
+| `NotFoundException` | `404 Not Found` | Entity lookup by ID returns no result |
+| `BadRequestException` | `400 Bad Request` | Business rule violation (insufficient funds, inactive account, self-transfer, negative amount) |
+| `MethodArgumentNotValidException` | `400 Bad Request` | Bean Validation constraint failure on a request DTO field |
+| `Exception` (catch-all) | `500 Internal Server Error` | Unexpected runtime error; message is sanitised to `"Unexpected error"` |
 
 ---
 
@@ -60,176 +257,127 @@ src/main/java/com/azizsattarov/corebanking/
 ### Prerequisites
 
 - Java 17+
-- Maven 3.8+ or Gradle 8+
-- PostgreSQL
+- Maven 3.8+ (or use the project's Maven Wrapper: `./mvnw`)
+- Docker and Docker Compose
 
-### Configuration
-
-In `src/main/resources/application.properties`:
-
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/corebanking
-spring.datasource.username=your_db_user
-spring.datasource.password=your_db_password
-spring.jpa.hibernate.ddl-auto=update
-```
-
-### Run
+### 1. Start the Database
 
 ```bash
-mvn spring-boot:run
+docker compose up -d
 ```
 
-API is available at `http://localhost:8080`
+The compose file provisions a PostgreSQL container with the following configuration:
+
+| Parameter | Value |
+|---|---|
+| Container name | `postgres-spring-boot` |
+| Host port | `5332` (mapped from container port `5432`) |
+| Database | `dbv1` |
+| Username | `dbv1` |
+| Password | `pass123` |
+| Data volume | `db` (persisted across restarts) |
+
+### 2. Configure application.properties
+
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5332/dbv1
+spring.datasource.username=dbv1
+spring.datasource.password=pass123
+
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+```
+
+> **Note:** `ddl-auto=create-drop` drops and recreates the entire schema on every application restart. This is intentional for local development but must be changed to `validate` or `none` before deploying to any persistent environment.
+
+### 3. Build and Run
+
+```bash
+git clone https://github.com/azizsattarov/core-banking.git
+cd core-banking
+docker compose up -d
+./mvnw spring-boot:run
+```
+
+The API will be available at `http://localhost:8080`.
 
 ---
 
-## API Reference
+## Example Usage
 
-### Customers — `/customers`
+**Create a customer**
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/customers` | Create a new customer |
-| `GET` | `/customers` | List all active customers |
-| `GET` | `/customers/{id}/accounts` | Get all accounts for a customer |
-| `PUT` | `/customers/{id}` | Update customer contact info |
-| `DELETE` | `/customers/{id}` | Soft-delete customer |
+```bash
+curl -X POST http://localhost:8080/customers \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "firstName":   "Aziz",
+    "lastName":    "Sattarov",
+    "nationalId":  "12345678901",
+    "email":       "aziz@bank.com",
+    "phoneNumber": "+998901234567",
+    "dateOfBirth": "1995-04-15"
+  }'
+```
 
-**Create Customer — Request:**
-```json
-{
-  "firstName": "Jane",
-  "lastName": "Doe",
-  "nationalId": "12345678901",
-  "email": "jane@example.com",
-  "phoneNumber": "+1234567890",
-  "dateOfBirth": "1990-05-15"
-}
+**Open a bank account**
+
+```bash
+curl -X POST http://localhost:8080/customers/1/accounts \
+  -H 'Content-Type: application/json' \
+  -d '{ "initialBalance": 1000.00 }'
+```
+
+**Deposit funds**
+
+```bash
+curl -X POST http://localhost:8080/accounts/1/deposit \
+  -H 'Content-Type: application/json' \
+  -d '{ "amountDeposit": 500.00 }'
+```
+
+**Transfer between accounts**
+
+```bash
+curl -X POST http://localhost:8080/accounts/1/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{ "toAccountId": 2, "amount": 250.00 }'
+```
+
+**Get transaction history**
+
+```bash
+curl http://localhost:8080/accounts/1/transactions
 ```
 
 ---
 
-### Accounts — `/customers/{customerId}/accounts`
+## Design Decisions
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/{customerId}/accounts` | Create account under a customer |
-| `PATCH` | `/{customerId}/accounts/{accountId}/status` | Change account status |
-| `DELETE` | `/{customerId}/accounts/{accountId}` | Soft-delete account |
+**Pessimistic over optimistic locking**
 
-**Account Status values:** `ACTIVE` · `FROZEN` · `CLOSED`
+Optimistic locking relies on version-field conflicts and requires retry logic in the caller, which is difficult to handle correctly in a stateless REST API. For a banking system where balance correctness is non-negotiable, pessimistic locking provides a simpler and stronger guarantee. At typical banking transaction volumes, the throughput tradeoff is justified.
 
-**Create Account — Request:**
-```json
-{ "initialBalance": 1000.00 }
-```
+**Java records for DTOs**
 
-**Response:**
-```json
-{
-  "accountId": 1,
-  "accountNumber": "ACC3F2A1B9C8D0",
-  "accountStatus": "ACTIVE",
-  "balance": 1000.0000,
-  "createdAt": "2024-01-15T10:35:00"
-}
-```
+Records are immutable by default and provide built-in `equals`, `hashCode`, and `toString` with no boilerplate. Since DTOs are pure data carriers with no behaviour, records are the appropriate type.
+
+**Soft deletes**
+
+Banking regulations typically require that customer data and transaction history be retained for audit and compliance purposes even after an account is closed. Soft deletes ensure a complete historical record is preserved in the database while the application layer operates exclusively on active entities.
 
 ---
 
-### Transactions — `/accounts/{accountId}`
+## Potential Improvements
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/{accountId}/deposit` | Deposit funds |
-| `POST` | `/{accountId}/withdraw` | Withdraw funds |
-| `POST` | `/{fromAccountId}/transfers` | Transfer between accounts |
-| `GET` | `/{accountId}/transactions` | Get transaction history |
-
-**Deposit — Request:**
-```json
-{ "amountDeposit": 500.00 }
-```
-
-**Withdraw — Request:**
-```json
-{ "amountWithdraw": 200.00 }
-```
-
-**Transfer — Request:**
-```json
-{ "toAccountId": 2, "amount": 300.00 }
-```
-
-**Transfer — Response:**
-```json
-{
-  "referenceId": "X1Y2Z3A4B5C6",
-  "transactionFromId": 3,
-  "transactionToId": 4,
-  "fromAccountId": 1,
-  "toAccountId": 2,
-  "amount": 300.0000,
-  "balanceFrom": 700.0000,
-  "balanceTo": 1300.0000,
-  "createdAtFrom": "2024-01-15T11:05:00",
-  "createdAtTo": "2024-01-15T11:05:00"
-}
-```
-
-**Transfer rules:**
-- Source and destination accounts must be different
-- Both accounts must be `ACTIVE`
-- Source account must have sufficient balance
-- Both sides share the same `referenceId`
-
----
-
-## Concurrency & Data Integrity
-
-### Pessimistic Locking
-
-All balance-modifying operations use `SELECT ... FOR UPDATE` via `AccountRepository.findByIdForUpdate()`, preventing lost updates under concurrent requests.
-
-### Deadlock Prevention
-
-Transfer operations acquire locks on both accounts in a deterministic order (lower `accountId` first), ensuring two concurrent transfers between the same accounts always contend for locks in the same sequence.
-
-```java
-Long first  = min(accountFromId, toAccountId);
-Long second = max(accountFromId, toAccountId);
-// Always lock 'first' before 'second'
-```
-
-### Soft Deletes
-
-Both `Customer` and `Account` use soft deletion — records are never physically removed. A `deleted_at` timestamp is set, and `@SQLRestriction("deleted_at IS NULL")` automatically filters them out of all queries.
-
----
-
-## Error Handling
-
-| Status | Cause |
-|--------|-------|
-| `201 Created` | Resource successfully created |
-| `200 OK` | Resource retrieved or updated |
-| `204 No Content` | Resource deleted |
-| `400 Bad Request` | Negative amount, insufficient funds, same-account transfer, inactive account |
-| `404 Not Found` | Customer or Account not found |
-
----
-
-## Data Model
-
-```
-Customer (1) ──── (*) Account (1) ──── (*) Transaction
-```
-
-- One customer can have many accounts
-- One account can have many transactions
-- Transfers create one `TRANSFER_OUT` + one `TRANSFER_IN` record sharing a `referenceId`
-- All monetary values stored as `DECIMAL(19,4)` — `BigDecimal` used throughout to avoid floating-point errors
+- Replace `ddl-auto` with Flyway or Liquibase for version-controlled schema migrations
+- Add Spring Security with JWT authentication and role-based access control
+- Add multi-currency support with FX conversion on transfers
+- Paginate `/transactions` and `/customers` responses for large datasets
+- Write integration tests using Testcontainers against a real PostgreSQL instance
+- Expose interactive API documentation via `springdoc-openapi`
+- Add an immutable audit log table capturing every state change with actor and timestamp
+- Integrate Micrometer metrics and structured logging for production observability
 
 ---
 
