@@ -289,7 +289,11 @@ spring.jpa.hibernate.ddl-auto=create-drop
 spring.jpa.show-sql=true
 ```
 
-> **Note:** `ddl-auto=create-drop` drops and recreates the entire schema on every application restart. This is intentional for local development but must be changed to `validate` or `none` before deploying to any persistent environment.
+> [!CAUTION]
+> `ddl-auto=create-drop` drops and recreates the entire schema on every application restart.
+> This is intentional for local development. Change to `validate` or `none` before deploying
+> to any persistent environment or you will lose all data on restart.
+
 
 ### 3. Build and Run
 
