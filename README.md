@@ -24,17 +24,18 @@ including deposits, withdrawals, and peer-to-peer transfers — with full concur
 
 ## Tech Stack
 
-| Technology | Purpose |
-|---|---|
-| Java 17 | LTS release; records used for immutable DTOs |
-| Spring Boot 3 | Core framework — dependency injection, embedded Tomcat, auto-configuration |
-| Spring Data JPA | Repository abstraction over Hibernate ORM; pessimistic locking via `@Lock` |
-| PostgreSQL 16 | Primary relational database |
-| Docker / Compose | Single-command local environment bootstrap |
-| Lombok | Reduces entity boilerplate (`@Getter`, `@Setter`, `@NoArgsConstructor`, etc.) |
-| Jakarta Validation | Bean Validation 3.0 constraints on all request DTOs |
-| Hibernate `@SQLRestriction` | Transparent soft-delete filtering on `Customer` and `Account` entities |
-
+| Technology | Version | Purpose |
+|---|---|---|
+| Java | 21 | LTS release; records used for immutable DTOs |
+| Spring Boot | 4.0.3 | Core framework — dependency injection, embedded Tomcat, auto-configuration |
+| Spring Boot Starter Web MVC | managed by parent | REST controllers, `DispatcherServlet`, Jackson serialisation |
+| Spring Data JPA | managed by parent | Repository abstraction over Hibernate ORM; pessimistic locking via `@Lock` |
+| Spring Boot Starter Validation | managed by parent | Bean Validation 3.0 constraints on all request DTOs |
+| PostgreSQL JDBC Driver | managed by parent | Runtime JDBC driver for PostgreSQL |
+| Lombok | 1.18.30 | Reduces entity boilerplate (`@Getter`, `@Setter`, `@NoArgsConstructor`, etc.) |
+| Spring Boot DevTools | managed by parent | Automatic restart and live reload during development |
+| Docker / Compose | — | Single-command local environment bootstrap |
+| Hibernate `@SQLRestriction` | managed by Spring Data JPA | Transparent soft-delete filtering on `Customer` and `Account` entities |
 ---
 
 ## Project Structure
