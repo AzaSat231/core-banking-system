@@ -1,11 +1,11 @@
 package com.azizsattarov.corebanking.transaction.dto;
 
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 
 public record WithdrawRequest(
-        @NotNull @PositiveOrZero BigDecimal amountWithdraw
+        @NotNull @Positive BigDecimal amountWithdraw
 ) {
 }

@@ -1,6 +1,7 @@
 package com.azizsattarov.corebanking.customer;
 
 import com.azizsattarov.corebanking.account.Account;
+import com.azizsattarov.corebanking.account.AccountStatus;
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.AllArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 
 @Entity
@@ -20,6 +22,7 @@ import lombok.AllArgsConstructor;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@SQLRestriction("deleted_at IS NULL")
 public class Customer {
 
     @Id
@@ -45,8 +48,15 @@ public class Customer {
     @Column(nullable = false, unique = false)
     private LocalDate dateOfBirth;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CustomerStatus customerStatus;
+
     @Column(name = "createdAt", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Account> accounts = new HashSet<>();

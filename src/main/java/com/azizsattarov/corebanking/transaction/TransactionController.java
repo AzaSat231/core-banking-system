@@ -1,6 +1,7 @@
 package com.azizsattarov.corebanking.transaction;
 
 import com.azizsattarov.corebanking.transaction.dto.*;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +17,7 @@ public class TransactionController {
     @PostMapping("/{accountId}/deposit")
     public ResponseEntity<TransactionResponse> deposit (
             @PathVariable Long accountId,
-            @RequestBody DepositRequest depositRequest
+            @Valid @RequestBody DepositRequest depositRequest
             ){
         TransactionResponse deposited = transactionService.deposit(accountId, depositRequest);
         return ResponseEntity.status(201).body(deposited);
@@ -25,7 +26,7 @@ public class TransactionController {
     @PostMapping("/{accountId}/withdraw")
     public ResponseEntity<TransactionResponse> withdraw (
             @PathVariable Long accountId,
-            @RequestBody WithdrawRequest withdrawRequest
+            @Valid @RequestBody WithdrawRequest withdrawRequest
             ){
         TransactionResponse withdrawn = transactionService.withdraw(accountId, withdrawRequest);
         return ResponseEntity.status(201).body(withdrawn);
@@ -34,7 +35,7 @@ public class TransactionController {
     @PostMapping("/{fromAccountId}/transfers")
     public ResponseEntity<TransferResponse> transfer(
             @PathVariable Long fromAccountId,
-            @RequestBody TransferRequest transferRequest
+            @Valid @RequestBody TransferRequest transferRequest
     ){
         TransferResponse transferResponse = transactionService.transfer(fromAccountId, transferRequest);
         return ResponseEntity.status(201).body(transferResponse);

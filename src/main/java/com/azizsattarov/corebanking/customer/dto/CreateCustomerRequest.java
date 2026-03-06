@@ -1,8 +1,8 @@
 package com.azizsattarov.corebanking.customer.dto;
 
-import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
 
@@ -12,5 +12,5 @@ public record CreateCustomerRequest(
         @NotBlank String nationalId,
         @NotBlank @Email String email,
         @NotBlank String phoneNumber,
-        @NotBlank LocalDate dateOfBirth
+        @NotNull LocalDate dateOfBirth
 ) {}

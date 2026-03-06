@@ -18,12 +18,10 @@ import java.util.UUID;
 public class TransactionServiceImpl implements TransactionService{
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
-    private final EntityManager em;
 
-    public TransactionServiceImpl(AccountRepository accountRepository, TransactionRepository transactionRepository, EntityManager em) {
+    public TransactionServiceImpl(AccountRepository accountRepository, TransactionRepository transactionRepository) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
-        this.em = em;
     }
 
     private String generateReferenceId() {
@@ -44,36 +42,15 @@ public class TransactionServiceImpl implements TransactionService{
     @Override
     @Transactional
     public TransactionResponse deposit(Long accountId, DepositRequest depositRequest){
-//        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
 
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         if (!account.isActive()){
-            Transaction transaction = setTransaction(
-                    depositRequest.amountDeposit(),
-                    account.getBalance(),
-                    TransactionType.DEPOSIT,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            account.addTransaction(transaction);
-            accountRepository.save(account);
             throw new BadRequestException("Deposit failed: This account is " + account.getAccountStatus());
         }
 
         if (depositRequest.amountDeposit().compareTo(BigDecimal.ZERO) <= 0){
-            Transaction transaction = setTransaction(
-                    depositRequest.amountDeposit(),
-                    account.getBalance(),
-                    TransactionType.DEPOSIT,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            account.addTransaction(transaction);
-            accountRepository.save(account);
             throw new BadRequestException("Deposit Amount must be positive");
         }
 
@@ -104,53 +81,19 @@ public class TransactionServiceImpl implements TransactionService{
     @Override
     @Transactional
     public TransactionResponse withdraw(Long accountId, WithdrawRequest withdrawRequest) {
-//        em.createNativeQuery("SET LOCAL lock_timeout = '2s'").executeUpdate();
 
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
         if (!account.isActive()){
-            Transaction transaction = setTransaction(
-                    withdrawRequest.amountWithdraw(),
-                    account.getBalance(),
-                    TransactionType.WITHDRAW,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            account.addTransaction(transaction);
-            accountRepository.save(account);
-
             throw new BadRequestException("Withdraw failed: This account is " + account.getAccountStatus());
         }
 
         if (withdrawRequest.amountWithdraw().compareTo(account.getBalance()) > 0){
-            Transaction transaction = setTransaction(
-                    withdrawRequest.amountWithdraw(),
-                    account.getBalance(),
-                    TransactionType.WITHDRAW,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            account.addTransaction(transaction);
-            accountRepository.save(account);
-
             throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
         }
 
         if (withdrawRequest.amountWithdraw().compareTo(BigDecimal.ZERO) <= 0){
-            Transaction transaction = setTransaction(
-                    withdrawRequest.amountWithdraw(),
-                    account.getBalance(),
-                    TransactionType.WITHDRAW,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            account.addTransaction(transaction);
-            accountRepository.save(account);
-
             throw new BadRequestException("Withdraw Amount must be positive");
         }
 
@@ -203,45 +146,14 @@ public class TransactionServiceImpl implements TransactionService{
         Account accountTo = transferRequest.toAccountId().equals(a1.getAccountId()) ? a1 : a2;
 
         if (!accountFrom.isActive()){
-            Transaction declined = setTransaction(
-                    transferRequest.amount(),
-                    accountFrom.getBalance(),
-                    TransactionType.TRANSFER_OUT,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-            accountFrom.addTransaction(declined);
-            accountRepository.save(accountFrom);
-
             throw new BadRequestException("Transfer failed: Account " + accountFrom.getAccountNumber() + " is " + accountFrom.getAccountStatus());
         }
 
         if (!accountTo.isActive()){
-            Transaction declined = setTransaction(
-                    transferRequest.amount(),
-                    accountTo.getBalance(),
-                    TransactionType.TRANSFER_IN,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-
-            accountTo.addTransaction(declined);
-            accountRepository.save(accountTo);
-
             throw new BadRequestException("Transfer failed: Account " + accountTo.getAccountNumber() + " is " + accountTo.getAccountStatus());
         }
 
         if (transferRequest.amount().compareTo(accountFrom.getBalance()) > 0){
-            Transaction declined = setTransaction(
-                    transferRequest.amount(),
-                    accountFrom.getBalance(),
-                    TransactionType.TRANSFER_OUT,
-                    TransactionStatus.DECLINED,
-                    generateReferenceId()
-            );
-            accountFrom.addTransaction(declined);
-            accountRepository.save(accountFrom);
-
             throw new BadRequestException("Insufficient funds");
         }
 
@@ -279,30 +191,29 @@ public class TransactionServiceImpl implements TransactionService{
         accountRepository.save(accountFrom);
         accountRepository.save(accountTo);
 
-        Transaction savedFrom = transactionRepository.save(transactionFrom);
-        Transaction savedTo   = transactionRepository.save(transactionTo);
-
         return new TransferResponse(
                 ref,
-                savedFrom.getTransactionId(),
-                savedTo.getTransactionId(),
+                transactionFrom.getTransactionId(),
+                transactionTo.getTransactionId(),
                 accountFromId,
                 transferRequest.toAccountId(),
                 transferRequest.amount(),
                 accountFrom.getBalance(),
                 accountTo.getBalance(),
-                savedFrom.getCreatedAt(),
-                savedTo.getCreatedAt()
+                transactionFrom.getCreatedAt(),
+                transactionTo.getCreatedAt()
         );
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<TransactionResponse> getTransactionHistory(Long accountId) {
-        Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+        if (!accountRepository.existsById(accountId)) {
+            throw new NotFoundException("Account Not Found: " + accountId);
+        }
 
-        return account.getTransactions().stream()
+        return transactionRepository.findByAccountId(accountId)
+                .stream()
                 .map(t -> new TransactionResponse(
                         t.getTransactionId(),
                         t.getReferenceId(),

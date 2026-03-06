@@ -1,7 +1,9 @@
 package com.azizsattarov.corebanking.customer;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
+import com.azizsattarov.corebanking.account.AccountStatus;
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.customer.dto.CreateCustomerRequest;
 import com.azizsattarov.corebanking.customer.dto.CustomerResponse;
@@ -27,6 +29,7 @@ public class CustomerServiceImpl implements CustomerService{
         customer.setEmail(request.email());
         customer.setPhoneNumber(request.phoneNumber());
         customer.setDateOfBirth(request.dateOfBirth());
+        customer.setCustomerStatus(CustomerStatus.ACTIVE);
 
         Customer saved = customerRepository.save(customer);
 
@@ -105,6 +108,9 @@ public class CustomerServiceImpl implements CustomerService{
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
 
-        customerRepository.delete(customer);
+        customer.setDeletedAt(LocalDateTime.now()); // soft delete
+        customer.setCustomerStatus(CustomerStatus.CLOSED);
+
+        customerRepository.save(customer);
     }
 }
