@@ -1,6 +1,16 @@
 ### GET request to example server
-@customerId = 1
-GET http://localhost:8080/customers/{{customerId}}/accounts
+POST http://localhost:8080/customers
+Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbjEiLCJyb2xlIjoiUk9MRV9BRE1JTiIsImlhdCI6MTc3Mjk5OTgyMywiZXhwIjoxNzczMDg2MjIzfQ.jnoqDfSFgt60ngBJ-4XZMmRv031a4cGAkxe5slqtC0qy8_mbZD5f8tQq9yn9NvJC
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "nationalId": "12345678",
+  "email": "john@example.com",
+  "phoneNumber": "1234567890",
+  "dateOfBirth": "1990-01-01"
+}
 
 ###
 

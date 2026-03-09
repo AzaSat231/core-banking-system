@@ -11,7 +11,6 @@ import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.customer.CustomerRepository;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
-import org.hibernate.annotations.SQLRestriction;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
