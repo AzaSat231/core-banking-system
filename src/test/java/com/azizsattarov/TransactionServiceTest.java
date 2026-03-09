@@ -52,7 +52,7 @@ class TransactionServiceTest extends BaseIntegrationTest {
         accountRepository.save(accountB);
     }
 
-    // ✅ TEST 1: Deposit
+    // TEST 1: Deposit
     @Test
     void deposit_shouldIncreaseBalance() {
         // ARRANGE
@@ -66,7 +66,7 @@ class TransactionServiceTest extends BaseIntegrationTest {
         assertThat(updated.getBalance()).isEqualByComparingTo("1200.00");
     }
 
-    // ✅ TEST 2: Withdraw with insufficient funds
+    // TEST 2: Withdraw with insufficient funds
     @Test
     void withdraw_shouldThrow_whenInsufficientFunds() {
         // ARRANGE - try to withdraw more than balance
@@ -80,7 +80,7 @@ class TransactionServiceTest extends BaseIntegrationTest {
                 .hasMessageContaining("Withdraw Amount must be less than Balance Amount");
     }
 
-    // ✅ TEST 3: Transfer
+    // TEST 3: Transfer
     @Test
     void transfer_shouldMoveMoney_betweenAccounts() {
         // ARRANGE
