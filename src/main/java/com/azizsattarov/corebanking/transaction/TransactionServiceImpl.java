@@ -69,6 +69,8 @@ public class TransactionServiceImpl implements TransactionService{
 
         accountRepository.save(account);
 
+        transaction = transactionRepository.save(transaction);
+
         return new TransactionResponse(
                 transaction.getTransactionId(),
                 transaction.getReferenceId(),
@@ -111,6 +113,8 @@ public class TransactionServiceImpl implements TransactionService{
         account.addTransaction(transaction);
 
         accountRepository.save(account);
+
+        transaction = transactionRepository.save(transaction);
 
         return new TransactionResponse(
                 transaction.getTransactionId(),
@@ -171,6 +175,7 @@ public class TransactionServiceImpl implements TransactionService{
         );
 
         transactionFrom.setCounterpartyAccountNumber(accountTo.getAccountNumber());
+        transactionFrom.setAccount(accountFrom);
 
         Transaction transactionTo = setTransaction(
                 transferRequest.amount(),
@@ -181,6 +186,7 @@ public class TransactionServiceImpl implements TransactionService{
         );
 
         transactionTo.setCounterpartyAccountNumber(accountFrom.getAccountNumber());
+        transactionTo.setAccount(accountTo);
 
         accountFrom.setBalance(balanceAfterFrom);
         accountTo.setBalance(balanceAfterTo);
@@ -190,6 +196,9 @@ public class TransactionServiceImpl implements TransactionService{
 
         accountRepository.save(accountFrom);
         accountRepository.save(accountTo);
+
+        transactionFrom = transactionRepository.save(transactionFrom);
+        transactionTo = transactionRepository.save(transactionTo);
 
         return new TransferResponse(
                 ref,
