@@ -39,6 +39,7 @@ public class TransactionServiceImpl implements TransactionService{
         return transaction;
     }
 
+    // Explain the transcational part
     @Override
     @Transactional
     public TransactionResponse deposit(Long accountId, DepositRequest depositRequest){
@@ -91,12 +92,12 @@ public class TransactionServiceImpl implements TransactionService{
             throw new BadRequestException("Withdraw failed: This account is " + account.getAccountStatus());
         }
 
-        if (withdrawRequest.amountWithdraw().compareTo(account.getBalance()) > 0){
-            throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
-        }
-
         if (withdrawRequest.amountWithdraw().compareTo(BigDecimal.ZERO) <= 0){
             throw new BadRequestException("Withdraw Amount must be positive");
+        }
+
+        if (withdrawRequest.amountWithdraw().compareTo(account.getBalance()) > 0){
+            throw new BadRequestException("Withdraw Amount must be less than Balance Amount");
         }
 
         BigDecimal balanceAfter = account.getBalance().subtract(withdrawRequest.amountWithdraw());
