@@ -1,27 +1,20 @@
 package com.azizsattarov.corebanking.customer;
 
 import com.azizsattarov.corebanking.account.Account;
-import com.azizsattarov.corebanking.account.AccountStatus;
 import jakarta.persistence.*;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
-
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
-
 @Entity
 @Table(name = "customers")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor
 @SQLRestriction("deleted_at IS NULL")
 public class Customer {
 
@@ -45,7 +38,7 @@ public class Customer {
     @Column(nullable = false, unique = true)
     private String phoneNumber;
 
-    @Column(nullable = false, unique = false)
+    @Column(nullable = false)
     private LocalDate dateOfBirth;
 
     @Enumerated(EnumType.STRING)
@@ -58,13 +51,15 @@ public class Customer {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    // BCrypt ATM PIN — set via POST /atm/set-pin, never in API responses
+    @Column(name = "pin_hash")
+    private String pinHash;
+
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Account> accounts = new HashSet<>();
 
     @PrePersist
-    void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
+    void onCreate() { this.createdAt = LocalDateTime.now(); }
 
     public void addAccount(Account account) {
         accounts.add(account);

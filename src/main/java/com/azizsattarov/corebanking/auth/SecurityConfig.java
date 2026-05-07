@@ -39,19 +39,24 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
 
-                        // ── Customers ──────────────────────────────────────────
+                        // ATM login is public — called by middleware only
+                        .requestMatchers(HttpMethod.POST, "/atm/login").permitAll()
+                        // Set PIN requires admin JWT
+                        .requestMatchers(HttpMethod.POST, "/atm/set-pin").hasRole("ADMIN")
+
+                        // Customers
                         .requestMatchers(HttpMethod.GET, "/customers/**").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")
 
-                        // ── Accounts ───────────────────────────────────────────
+                        // Accounts
                         .requestMatchers(HttpMethod.GET, "/customers/*/accounts").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/customers/*/accounts").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/customers/*/accounts/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/customers/*/accounts/**").hasRole("ADMIN")
 
-                        // ── Transactions ───────────────────────────────────────
+                        // Transactions
                         .requestMatchers(HttpMethod.GET, "/accounts/*/transactions").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/accounts/**").hasAnyRole("ADMIN", "USER")
 
