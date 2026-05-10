@@ -8,6 +8,7 @@ public record TransactionResponse(
         Long transactionId,
         String referenceId,
         BigDecimal amount,
+        BigDecimal balanceAfter,
         LocalDateTime createdAt,
         TransactionType transactionType
 ) {}
