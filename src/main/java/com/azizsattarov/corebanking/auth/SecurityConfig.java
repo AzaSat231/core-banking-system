@@ -20,9 +20,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ServiceTokenAuthFilter serviceTokenAuthFilter;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          ServiceTokenAuthFilter serviceTokenAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.serviceTokenAuthFilter = serviceTokenAuthFilter;
     }
 
     @Bean
@@ -60,8 +63,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/accounts/*/transactions").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/accounts/**").hasAnyRole("ADMIN", "USER")
 
+                        // Reconciliation worker — gated by ServiceTokenAuthFilter
+                        .requestMatchers("/admin/**").hasRole("SERVICE")
+
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(serviceTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

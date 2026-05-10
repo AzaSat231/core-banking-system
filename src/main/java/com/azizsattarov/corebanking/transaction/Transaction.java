@@ -40,6 +40,25 @@ public class Transaction {
     @Column(nullable = false)
     private TransactionStatus transactionStatus;
 
+    // ── Blockchain reconciliation fields (managed by middleware Layer 2) ──────
+    // canonicalHash and blockchainTx are written via PATCH /admin/transactions/{id}/blockchain
+    // after Spring Boot has committed the transaction and returned its id.
+    @Column(length = 64)
+    private String canonicalHash;
+
+    @Column(length = 80)
+    private String blockchainTx;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ChainStatus chainStatus;
+
+    @Column(nullable = false)
+    private int submitAttempts;
+
+    @Column(length = 1000)
+    private String lastSubmitError;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)
     private Account account;
@@ -47,5 +66,8 @@ public class Transaction {
     @PrePersist
     void onCreate() {
         this.createdAt = LocalDateTime.now();
+        if (this.chainStatus == null) {
+            this.chainStatus = ChainStatus.PENDING_SUBMIT;
+        }
     }
 }
