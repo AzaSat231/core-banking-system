@@ -100,6 +100,13 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
         return toView(transactionRepository.save(t));
     }
 
+    @Override
+    public AdminTransactionView findById(Long transactionId) {
+        Transaction t = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new NotFoundException("Transaction not found: " + transactionId));
+        return toView(t);
+    }
+
     private static AdminTransactionView toView(Transaction t) {
         return new AdminTransactionView(
                 t.getTransactionId(),

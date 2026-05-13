@@ -1,5 +1,6 @@
 package com.azizsattarov.corebanking.transaction.dto;
 
+import com.azizsattarov.corebanking.transaction.ChainStatus;
 import com.azizsattarov.corebanking.transaction.TransactionType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -10,5 +11,6 @@ public record TransactionResponse(
         BigDecimal amount,
         BigDecimal balanceAfter,
         LocalDateTime createdAt,
-        TransactionType transactionType
+        TransactionType transactionType,
+        ChainStatus chainStatus        // ← add this
 ) {}

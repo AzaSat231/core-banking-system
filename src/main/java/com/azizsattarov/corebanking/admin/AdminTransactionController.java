@@ -46,6 +46,11 @@ public class AdminTransactionController {
         return adminService.findForTamperCheck(sinceTs, limit);
     }
 
+    @GetMapping("/{transactionId}")
+    public AdminTransactionView getById(@PathVariable Long transactionId) {
+        return adminService.findById(transactionId);
+    }
+
     @PatchMapping("/{transactionId}/blockchain")
     public AdminTransactionView updateBlockchain(
             @PathVariable Long transactionId,

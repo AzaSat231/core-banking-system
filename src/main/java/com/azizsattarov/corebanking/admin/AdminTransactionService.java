@@ -24,4 +24,6 @@ public interface AdminTransactionService {
     AdminTransactionView markConfirmed(Long transactionId);
 
     AdminTransactionView markTampered(Long transactionId, String reason);
+
+    AdminTransactionView findById(Long transactionId);
 }

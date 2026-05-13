@@ -70,7 +70,8 @@ public class TransactionServiceImpl implements TransactionService {
                 transaction.getAmount(),
                 transaction.getBalanceAfter(),
                 transaction.getCreatedAt(),
-                transaction.getTransactionType());
+                transaction.getTransactionType(),
+                transaction.getChainStatus());
     }
 
     @Override
@@ -103,7 +104,8 @@ public class TransactionServiceImpl implements TransactionService {
                 transaction.getAmount(),
                 transaction.getBalanceAfter(),
                 transaction.getCreatedAt(),
-                transaction.getTransactionType());
+                transaction.getTransactionType(),
+                transaction.getChainStatus());
     }
 
     @Override
@@ -179,7 +181,8 @@ public class TransactionServiceImpl implements TransactionService {
                         t.getAmount(),
                         t.getBalanceAfter(),
                         t.getCreatedAt(),
-                        t.getTransactionType()))
+                        t.getTransactionType(),
+                        t.getChainStatus()))
                 .toList();
     }
 }
