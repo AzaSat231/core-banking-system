@@ -10,8 +10,21 @@ services:
       - db:/data/postgres
     ports:
       - "5332:5432"
-    networks:
-      - db
+    networks: [db]
+    restart: unless-stopped
+
+  middleware-db:
+    container_name: postgres-middleware
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: mwuser
+      POSTGRES_PASSWORD: mwpass
+      PGDATA: /data/postgres
+    volumes:
+      - middleware-db:/data/postgres
+    ports:
+      - "5433:5432"
+    networks: [db]
     restart: unless-stopped
 
 networks:
@@ -20,3 +33,4 @@ networks:
 
 volumes:
   db:
+  middleware-db:
