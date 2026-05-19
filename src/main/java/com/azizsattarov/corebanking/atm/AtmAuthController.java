@@ -52,12 +52,17 @@ public class AtmAuthController {
                     .body(Map.of("error", "Account is " + account.getAccountStatus()));
         }
 
+        // Changed to Accounts having multiple PINs
         Customer customer = account.getCustomer();
-        if (customer == null || customer.getPinHash() == null) {
+        if (customer == null) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", "Invalid account number or PIN"));
+        }
+        if (account.getPinHash() == null) {
             return ResponseEntity.status(401)
                     .body(Map.of("error", "PIN not set. Contact a branch."));
         }
-        if (!passwordEncoder.matches(pin, customer.getPinHash())) {
+        if (!passwordEncoder.matches(pin, account.getPinHash())) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid account number or PIN"));
         }
 
@@ -80,26 +85,26 @@ public class AtmAuthController {
 
     @PostMapping("/set-pin")
     public ResponseEntity<?> setPin(@RequestBody Map<String, String> body) {
-        String customerIdStr = body.get("customerId");
+        String accountIdStr = body.get("accountId");
         String pin = body.get("pin");
 
-        if (customerIdStr == null || pin == null) {
+        if (accountIdStr == null || pin == null) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "customerId and pin are required"));
+                    .body(Map.of("error", "accountId and pin are required"));
         }
         if (pin.length() < 4) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "PIN must be at least 4 digits"));
         }
 
-        Customer customer = customerRepository.findById(Long.parseLong(customerIdStr)).orElse(null);
-        if (customer == null) {
+        Account account = accountRepository.findById(Long.parseLong(accountIdStr)).orElse(null);
+        if (account == null) {
             return ResponseEntity.notFound().build();
         }
 
-        customer.setPinHash(passwordEncoder.encode(pin));
-        customerRepository.save(customer);
+        account.setPinHash(passwordEncoder.encode(pin));
+        accountRepository.save(account);
 
-        return ResponseEntity.ok(Map.of("message", "PIN set for customer " + customerIdStr));
+        return ResponseEntity.ok(Map.of("message", "PIN set for account " + accountIdStr));
     }
 }

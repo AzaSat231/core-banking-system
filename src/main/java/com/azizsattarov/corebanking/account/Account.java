@@ -26,6 +26,10 @@ public class Account {
     @Column(nullable = false, unique = true)
     private String accountNumber;
 
+    // BCrypt ATM PIN — set via POST /atm/set-pin, never in API responses
+    @Column(name = "pin_hash")
+    private String pinHash;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal balance;
 

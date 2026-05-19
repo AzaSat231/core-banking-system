@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.exception;
 
 import com.azizsattarov.corebanking.exception.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -13,6 +14,27 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicate(DataIntegrityViolationException ex, HttpServletRequest req) {
+        // Get the root cause message which has the clean "Detail: Key (column)=..." text
+        Throwable root = ex;
+        while (root.getCause() != null) root = root.getCause();
+
+        String detail = (root.getMessage() != null ? root.getMessage() : ex.getMessage()).toLowerCase();
+        String message;
+
+        if (detail.contains("phone_number"))
+            message = "Phone number already exists.";
+        else if (detail.contains("email"))
+            message = "Email already exists.";
+        else if (detail.contains("national_id"))
+            message = "National ID already exists.";
+        else
+            message = "A customer with this information already exists.";
+
+        return build(HttpStatus.CONFLICT, message, req.getRequestURI());
+    }
 
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestException ex, HttpServletRequest req) {

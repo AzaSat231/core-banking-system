@@ -51,9 +51,6 @@ public class Customer {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    // BCrypt ATM PIN — set via POST /atm/set-pin, never in API responses
-    @Column(name = "pin_hash")
-    private String pinHash;
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Account> accounts = new HashSet<>();
