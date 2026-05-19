@@ -59,6 +59,15 @@ public class Transaction {
     @Column(length = 1000)
     private String lastSubmitError;
 
+    /** ATM withdraw: waiting for cash-dispense ACK, confirmed, or auto-reversed. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private DispenseStatus dispenseStatus = DispenseStatus.NOT_APPLICABLE;
+
+    /** When {@link DispenseStatus#PENDING_DISPENSE} and past this time, scheduler reverses. */
+    @Column
+    private LocalDateTime dispenseDeadline;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)
     private Account account;

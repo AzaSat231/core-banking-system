@@ -45,4 +45,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             ORDER BY t.createdAt ASC
             """)
     List<Transaction> findConfirmedSince(@Param("since") LocalDateTime since, Pageable pageable);
+
+    /**
+     * ATM withdrawals still waiting for dispense ACK after the deadline.
+     */
+    @Query("""
+            SELECT t FROM Transaction t
+            WHERE t.dispenseStatus = com.azizsattarov.corebanking.transaction.DispenseStatus.PENDING_DISPENSE
+              AND t.dispenseDeadline IS NOT NULL
+              AND t.dispenseDeadline < :now
+            ORDER BY t.dispenseDeadline ASC
+            """)
+    List<Transaction> findExpiredPendingDispense(@Param("now") LocalDateTime now, Pageable pageable);
 }

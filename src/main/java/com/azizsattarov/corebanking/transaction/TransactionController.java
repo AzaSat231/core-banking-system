@@ -26,10 +26,21 @@ public class TransactionController {
     @PostMapping("/{accountId}/withdraw")
     public ResponseEntity<TransactionResponse> withdraw (
             @PathVariable Long accountId,
-            @Valid @RequestBody WithdrawRequest withdrawRequest
+            @Valid @RequestBody WithdrawRequest withdrawRequest,
+            @RequestHeader(value = "X-Dispense-Ack-Timeout-Seconds", required = false)
+            Integer ackTimeoutSeconds
             ){
-        TransactionResponse withdrawn = transactionService.withdraw(accountId, withdrawRequest);
+        TransactionResponse withdrawn = transactionService.withdraw(
+                accountId, withdrawRequest, ackTimeoutSeconds);
         return ResponseEntity.status(201).body(withdrawn);
+    }
+
+    @PostMapping("/{accountId}/transactions/{transactionId}/confirm-dispense")
+    public ResponseEntity<TransactionResponse> confirmDispense(
+            @PathVariable Long accountId,
+            @PathVariable Long transactionId) {
+        TransactionResponse confirmed = transactionService.confirmDispense(accountId, transactionId);
+        return ResponseEntity.ok(confirmed);
     }
 
     @PostMapping("/{fromAccountId}/transfers")

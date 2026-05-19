@@ -5,10 +5,13 @@ import com.azizsattarov.corebanking.account.AccountRepository;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.dto.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,11 +20,27 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final int defaultAckTimeoutSeconds;
 
     public TransactionServiceImpl(AccountRepository accountRepository,
-                                  TransactionRepository transactionRepository) {
+                                  TransactionRepository transactionRepository,
+                                  @Value("${dispense.ack-timeout-seconds:30}") int defaultAckTimeoutSeconds) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.defaultAckTimeoutSeconds = defaultAckTimeoutSeconds;
+    }
+
+    private TransactionResponse toResponse(Transaction transaction) {
+        return new TransactionResponse(
+                transaction.getTransactionId(),
+                transaction.getReferenceId(),
+                transaction.getAmount(),
+                transaction.getBalanceAfter(),
+                transaction.getCreatedAt(),
+                transaction.getTransactionType(),
+                transaction.getChainStatus(),
+                transaction.getDispenseStatus(),
+                transaction.getDispenseDeadline());
     }
 
     private String generateReferenceId() {
@@ -37,6 +56,7 @@ public class TransactionServiceImpl implements TransactionService {
         t.setTransactionType(type);
         t.setTransactionStatus(status);
         t.setReferenceId(referenceId);
+        t.setDispenseStatus(DispenseStatus.NOT_APPLICABLE);
         return t;
     }
 
@@ -64,19 +84,14 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setAccount(account);
         transaction = transactionRepository.save(transaction);
 
-        return new TransactionResponse(
-                transaction.getTransactionId(),
-                transaction.getReferenceId(),
-                transaction.getAmount(),
-                transaction.getBalanceAfter(),
-                transaction.getCreatedAt(),
-                transaction.getTransactionType(),
-                transaction.getChainStatus());
+        return toResponse(transaction);
     }
 
     @Override
     @Transactional
-    public TransactionResponse withdraw(Long accountId, WithdrawRequest withdrawRequest) {
+    public TransactionResponse withdraw(Long accountId,
+                                        WithdrawRequest withdrawRequest,
+                                        Integer ackTimeoutSeconds) {
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
@@ -93,19 +108,84 @@ public class TransactionServiceImpl implements TransactionService {
                 withdrawRequest.amountWithdraw(), balanceAfter,
                 TransactionType.WITHDRAW, TransactionStatus.APPROVED, generateReferenceId());
 
-        // FIX: same as deposit — one save only
+        int timeout = ackTimeoutSeconds != null && ackTimeoutSeconds > 0
+                ? ackTimeoutSeconds
+                : defaultAckTimeoutSeconds;
+        transaction.setDispenseStatus(DispenseStatus.PENDING_DISPENSE);
+        transaction.setDispenseDeadline(LocalDateTime.now().plusSeconds(timeout));
+
         account.setBalance(balanceAfter);
         transaction.setAccount(account);
         transaction = transactionRepository.save(transaction);
 
-        return new TransactionResponse(
-                transaction.getTransactionId(),
-                transaction.getReferenceId(),
-                transaction.getAmount(),
-                transaction.getBalanceAfter(),
-                transaction.getCreatedAt(),
-                transaction.getTransactionType(),
-                transaction.getChainStatus());
+        return toResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse confirmDispense(Long accountId, Long transactionId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new NotFoundException("Transaction Not Found: " + transactionId));
+
+        if (!transaction.getAccount().getAccountId().equals(accountId)) {
+            throw new BadRequestException("Transaction does not belong to this account");
+        }
+        if (transaction.getTransactionType() != TransactionType.WITHDRAW) {
+            throw new BadRequestException("Only withdrawals require dispense confirmation");
+        }
+        if (transaction.getDispenseStatus() == DispenseStatus.DISPENSED) {
+            return toResponse(transaction);
+        }
+        if (transaction.getDispenseStatus() != DispenseStatus.PENDING_DISPENSE) {
+            throw new BadRequestException(
+                    "Withdraw is not awaiting dispense confirmation (status: "
+                            + transaction.getDispenseStatus() + ")");
+        }
+
+        transaction.setDispenseStatus(DispenseStatus.DISPENSED);
+        transaction.setDispenseDeadline(null);
+        transaction = transactionRepository.save(transaction);
+        return toResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public int reverseExpiredPendingDispenses() {
+        List<Transaction> expired = transactionRepository.findExpiredPendingDispense(
+                LocalDateTime.now(), PageRequest.of(0, 50));
+        int reversed = 0;
+        for (Transaction withdrawTx : expired) {
+            reversePendingWithdraw(withdrawTx);
+            reversed++;
+        }
+        return reversed;
+    }
+
+    private void reversePendingWithdraw(Transaction withdrawTx) {
+        if (withdrawTx.getDispenseStatus() != DispenseStatus.PENDING_DISPENSE) {
+            return;
+        }
+
+        Account account = accountRepository.findByIdForUpdate(
+                        withdrawTx.getAccount().getAccountId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Account Not Found: " + withdrawTx.getAccount().getAccountId()));
+
+        BigDecimal balanceAfter = account.getBalance().add(withdrawTx.getAmount());
+
+        Transaction reversal = setTransaction(
+                withdrawTx.getAmount(),
+                balanceAfter,
+                TransactionType.DEPOSIT,
+                TransactionStatus.APPROVED,
+                generateReferenceId());
+        reversal.setAccount(account);
+        account.setBalance(balanceAfter);
+        transactionRepository.save(reversal);
+
+        withdrawTx.setDispenseStatus(DispenseStatus.REVERSED);
+        withdrawTx.setDispenseDeadline(null);
+        transactionRepository.save(withdrawTx);
     }
 
     @Override
@@ -175,14 +255,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         return transactionRepository.findByAccountId(accountId)
                 .stream()
-                .map(t -> new TransactionResponse(
-                        t.getTransactionId(),
-                        t.getReferenceId(),
-                        t.getAmount(),
-                        t.getBalanceAfter(),
-                        t.getCreatedAt(),
-                        t.getTransactionType(),
-                        t.getChainStatus()))
+                .map(this::toResponse)
                 .toList();
     }
 }
