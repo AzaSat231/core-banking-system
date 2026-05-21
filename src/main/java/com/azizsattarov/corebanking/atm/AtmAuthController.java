@@ -108,4 +108,44 @@ public class AtmAuthController {
 
         return ResponseEntity.ok(Map.of("message", "PIN set for account " + accountIdStr));
     }
+
+    /**
+     * Customer PIN reset after admin unlock. Called only by middleware (X-Service-Token).
+     * Identity was confirmed by staff; customer chooses a new PIN at the ATM.
+     */
+    @PostMapping("/reset-pin")
+    public ResponseEntity<?> resetPin(@RequestBody Map<String, String> body) {
+        String accountNumber = body.get("accountNumber");
+        String pin = body.get("pin");
+
+        if (accountNumber == null || pin == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber and pin are required"));
+        }
+        if (pin.length() < 4) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "PIN must be at least 4 digits"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(accountNumber).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+        }
+        if (!account.isActive()) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Account is " + account.getAccountStatus()));
+        }
+
+        if (account.getPinHash() != null && passwordEncoder.matches(pin, account.getPinHash())) {
+            return ResponseEntity.status(400)
+                    .body(Map.of("error", "The PIN cannot be the same as the old one."));
+        }
+
+        account.setPinHash(passwordEncoder.encode(pin));
+        accountRepository.save(account);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "PIN reset for account " + accountNumber
+        ));
+    }
 }

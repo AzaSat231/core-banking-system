@@ -44,6 +44,8 @@ public class SecurityConfig {
 
                         // ATM login is public — called by middleware only
                         .requestMatchers(HttpMethod.POST, "/atm/login").permitAll()
+                        // Customer PIN reset after admin unlock — middleware service token only
+                        .requestMatchers(HttpMethod.POST, "/atm/reset-pin").hasRole("SERVICE")
                         // Set PIN requires admin JWT
                         .requestMatchers(HttpMethod.POST, "/atm/set-pin").hasRole("ADMIN")
 

@@ -45,7 +45,10 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String path = request.getRequestURI();
-        if (path == null || !path.startsWith("/admin/")) {
+        boolean adminPath = path != null && path.startsWith("/admin/");
+        boolean atmResetPin = path != null && "/atm/reset-pin".equals(path)
+                && "POST".equalsIgnoreCase(request.getMethod());
+        if (!adminPath && !atmResetPin) {
             chain.doFilter(request, response);
             return;
         }
