@@ -16,6 +16,7 @@ public class AccountController {
         this.accountService = accountService;
     }
 
+    // Create Customer with initial Account profile and initial balance
     @PostMapping
     public ResponseEntity<AccountResponse> createAccount(
             @PathVariable Long customerId,

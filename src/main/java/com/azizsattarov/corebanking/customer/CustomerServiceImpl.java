@@ -108,9 +108,16 @@ public class CustomerServiceImpl implements CustomerService{
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
 
-        customer.setDeletedAt(LocalDateTime.now()); // soft delete
-        customer.setCustomerStatus(CustomerStatus.CLOSED);
+        LocalDateTime now = LocalDateTime.now();
 
+        // Soft-delete all accounts explicitly (cascade won't do this for you)
+        customer.getAccounts().forEach(account -> {
+            account.setDeletedAt(now);
+            account.setAccountStatus(AccountStatus.CLOSED);
+        });
+
+        customer.setDeletedAt(now);
+        customer.setCustomerStatus(CustomerStatus.CLOSED);
         customerRepository.save(customer);
     }
 }

@@ -19,6 +19,7 @@ public class CustomerController {
         this.customerService = customerService;
     }
 
+    // Create customer record
     @PostMapping
     public ResponseEntity<CustomerResponse> saveCustomer(@Valid @RequestBody CreateCustomerRequest request){
         CustomerResponse created = customerService.saveCustomer(request);

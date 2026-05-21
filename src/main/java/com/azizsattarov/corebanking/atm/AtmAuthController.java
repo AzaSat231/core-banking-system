@@ -83,6 +83,7 @@ public class AtmAuthController {
         ));
     }
 
+    // Sets pin number to Account in hashed version
     @PostMapping("/set-pin")
     public ResponseEntity<?> setPin(@RequestBody Map<String, String> body) {
         String accountIdStr = body.get("accountId");
@@ -92,9 +93,9 @@ public class AtmAuthController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "accountId and pin are required"));
         }
-        if (pin.length() < 4) {
+        if (pin.length() != 4 || !pin.matches("\\d{4}")) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "PIN must be at least 4 digits"));
+                    .body(Map.of("error", "PIN must be exactly 4 digits"));
         }
 
         Account account = accountRepository.findById(Long.parseLong(accountIdStr)).orElse(null);
