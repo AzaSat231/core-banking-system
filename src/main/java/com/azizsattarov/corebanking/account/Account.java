@@ -1,5 +1,6 @@
 package com.azizsattarov.corebanking.account;
 
+import com.azizsattarov.corebanking.card.Card;
 import com.azizsattarov.corebanking.customer.Customer;
 import com.azizsattarov.corebanking.transaction.Transaction;
 import jakarta.persistence.*;
@@ -9,7 +10,9 @@ import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -27,8 +30,6 @@ public class Account {
     private String accountNumber;
 
     // BCrypt ATM PIN — set via POST /atm/set-pin, never in API responses
-    @Column(name = "pin_hash")
-    private String pinHash;
 
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal balance;
@@ -49,6 +50,10 @@ public class Account {
 
     @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Transaction> transactions = new HashSet<>();
+
+    /** Cards issued against this account. One account may have many cards. */
+    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Card> cards = new ArrayList<>();
 
     protected Account() {}
 

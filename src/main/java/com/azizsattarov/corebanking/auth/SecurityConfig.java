@@ -44,6 +44,11 @@ public class SecurityConfig {
 
                         // ATM login is public — called by middleware only
                         .requestMatchers(HttpMethod.POST, "/atm/login").permitAll()
+                        // BUG FIX: resolve-card must be public so middleware can call it
+                        // before a session/JWT exists (it's called before PIN entry).
+                        // The endpoint only returns the account number that is already
+                        // printed on receipts — no sensitive data is exposed.
+                        .requestMatchers(HttpMethod.GET, "/atm/resolve-card").permitAll()
                         // Customer PIN reset after admin unlock — middleware service token only
                         .requestMatchers(HttpMethod.POST, "/atm/reset-pin").hasRole("SERVICE")
                         // Set PIN requires admin JWT
@@ -64,6 +69,12 @@ public class SecurityConfig {
                         // Transactions
                         .requestMatchers(HttpMethod.GET, "/accounts/*/transactions").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/accounts/**").hasAnyRole("ADMIN", "USER")
+
+                        // Cards — list is allowed for account owner (USER); issue/block/cancel = ADMIN only
+                        .requestMatchers(HttpMethod.GET,    "/accounts/*/cards").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(HttpMethod.POST,   "/accounts/*/cards").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH,  "/accounts/*/cards/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/accounts/*/cards/**").hasRole("ADMIN")
 
                         // Reconciliation worker — gated by ServiceTokenAuthFilter
                         .requestMatchers("/admin/**").hasRole("SERVICE")
