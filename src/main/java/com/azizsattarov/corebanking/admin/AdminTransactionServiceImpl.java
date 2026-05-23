@@ -24,6 +24,16 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<AdminTransactionView> findAll(int limit) {
+        return transactionRepository
+                .findAllOrderByCreatedAtDesc(PageRequest.of(0, limit))
+                .stream()
+                .map(AdminTransactionServiceImpl::toView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<AdminTransactionView> findPendingSubmit(int limit, int maxAttempts) {
         return transactionRepository
                 .findPendingSubmit(maxAttempts, PageRequest.of(0, limit))

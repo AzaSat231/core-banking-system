@@ -13,6 +13,8 @@ import java.util.List;
  */
 public interface AdminTransactionService {
 
+    List<AdminTransactionView> findAll(int limit);
+
     List<AdminTransactionView> findPendingSubmit(int limit, int maxAttempts);
 
     List<AdminTransactionView> findSubmitted(int limit);

@@ -136,11 +136,6 @@ public class AtmAuthController {
                     .body(Map.of("error", "Account is " + account.getAccountStatus()));
         }
 
-        if (account.getPinHash() != null && passwordEncoder.matches(pin, account.getPinHash())) {
-            return ResponseEntity.status(400)
-                    .body(Map.of("error", "The PIN cannot be the same as the old one."));
-        }
-
         account.setPinHash(passwordEncoder.encode(pin));
         accountRepository.save(account);
 

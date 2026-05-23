@@ -23,6 +23,12 @@ public class AdminTransactionController {
         this.adminService = adminService;
     }
 
+    @GetMapping
+    public List<AdminTransactionView> all(
+            @RequestParam(defaultValue = "1000") int limit) {
+        return adminService.findAll(limit);
+    }
+
     @GetMapping("/pending-submit")
     public List<AdminTransactionView> pendingSubmit(
             @RequestParam(defaultValue = "25") int limit,

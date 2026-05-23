@@ -9,6 +9,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
+    @Query("SELECT t FROM Transaction t ORDER BY t.createdAt DESC")
+    List<Transaction> findAllOrderByCreatedAtDesc(Pageable pageable);
+
     @Query("SELECT t FROM Transaction t WHERE t.account.accountId = :accountId ORDER BY t.createdAt DESC")
     List<Transaction> findByAccountId(@Param("accountId") Long accountId);
 
