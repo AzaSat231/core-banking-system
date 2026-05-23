@@ -2,7 +2,6 @@ package com.azizsattarov.corebanking.account;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
@@ -15,103 +14,173 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AccountServiceImpl implements AccountService{
-        private final AccountRepository accountRepository;
-        private final CustomerRepository customerRepository;
+public class AccountServiceImpl implements AccountService {
 
-        // IIN/BIN of a bank system (Identification number that each bank has and consist of 8 digits)
-        private static final String BANK_IIN = "62260012";
-        private static final java.util.Random RANDOM = new java.util.Random();
+    private final AccountRepository accountRepository;
+    private final CustomerRepository customerRepository;
 
-        public AccountServiceImpl(AccountRepository accountRepository, CustomerRepository customerRepository) {
-            this.accountRepository = accountRepository;
-            this.customerRepository = customerRepository;
-        }
+    // ISO 13616 — Germany (DE), BBAN structure: 8!n 10!n, total IBAN length 22
+    // Bank identifier (Bankleitzahl): 8 digits, fixed per institution
+    private static final String COUNTRY_CODE  = "DE";
+    private static final String BANK_CODE     = "62260099"; // 8-digit bank identifier
+    private static final int    ACCOUNT_DIGITS = 9;         // random individual account digits
+    private static final int    MAX_RETRIES    = 10;
+    private static final java.util.Random RANDOM = new java.util.Random();
 
-        // Final, single-digit number appended to an identification sequence to verify its accuracy
-        // Mathematical formula that was developed by IBM scientist Hans Peter Luhn
-        private static int luhnCheckDigit(String number) {
-            int sum = 0;
-            boolean alternate = true;
-            for (int i = number.length() - 1; i >= 0; i--) {
-                int digit = Character.getNumericValue(number.charAt(i));
-                if (alternate) {
-                    digit *= 2;
-                    if (digit > 9) digit -= 9;
-                }
-                sum += digit;
-                alternate = !alternate;
+    public AccountServiceImpl(AccountRepository accountRepository,
+                               CustomerRepository customerRepository) {
+        this.accountRepository  = accountRepository;
+        this.customerRepository = customerRepository;
+    }
+
+    // ── Luhn check digit (ISO/IEC 7812-1) ────────────────────────────────────
+    // Appended to the 17-digit BBAN payload (bank code + account digits)
+    // to produce the final 18-digit BBAN.
+    private static int luhnCheckDigit(String number) {
+        int sum = 0;
+        boolean alternate = true;
+        for (int i = number.length() - 1; i >= 0; i--) {
+            int digit = Character.getNumericValue(number.charAt(i));
+            if (alternate) {
+                digit *= 2;
+                if (digit > 9) digit -= 9;
             }
-            return (10 - (sum % 10)) % 10;
+            sum += digit;
+            alternate = !alternate;
         }
+        return (10 - (sum % 10)) % 10;
+    }
 
-        private String generateAccountNumber() {
-            String accountPart = String.format("%07d", RANDOM.nextInt(10_000_000)); // Individual Account Number - 7 digits
-            String bankPlusAccount = BANK_IIN + accountPart;    // Combined parts of Account and IIN -15 digits
-            int checkDigit = luhnCheckDigit(bankPlusAccount);   // Check Digit - 1 digit
-            return bankPlusAccount + checkDigit;                // 16 digits
-        }
+    // ── MOD-97 check digits (ISO/IEC 7064 MOD97-10) ──────────────────────────
+    // Computes the two IBAN check digits CC in: DE CC <BBAN>
+    // Steps per ISO 13616-1:
+    //   1. Move country code + "00" to the end of the BBAN
+    //   2. Replace each letter with its numeric equivalent (A=10, B=11, …)
+    //   3. Compute 98 − (numeric string MOD 97)
+    private static String ibanCheckDigits(String countryCode, String bban) {
+        // Step 1: rearrange — BBAN + country letters + "00"
+        String rearranged = bban + countryCode + "00";
 
-        @Override
-        @Transactional
-        public AccountResponse createAccount(Long customerId, CreateAccountRequest createAccountRequest){
-            Customer customer = customerRepository.findById(customerId)
-                    .orElseThrow(() -> new NotFoundException("Customer Not Found: " + customerId));
-
-            if (createAccountRequest.initialBalance().compareTo(BigDecimal.ZERO) < 0){
-                throw new BadRequestException("Balance cannot be negative");
+        // Step 2: letters → digits
+        StringBuilder numeric = new StringBuilder();
+        for (char c : rearranged.toCharArray()) {
+            if (Character.isLetter(c)) {
+                numeric.append(Character.getNumericValue(c)); // A=10 … Z=35
+            } else {
+                numeric.append(c);
             }
+        }
 
-            Account account = new Account(generateAccountNumber(), createAccountRequest.initialBalance());
+        // Step 3: MOD 97 on arbitrarily large number (process in chunks)
+        java.math.BigInteger bigInt =
+                new java.math.BigInteger(numeric.toString());
+        int remainder = bigInt.mod(java.math.BigInteger.valueOf(97)).intValue();
+        int checkValue = 98 - remainder;
 
-            customer.addAccount(account);
+        // Check digits are always two characters, zero-padded if needed
+        return String.format("%02d", checkValue);
+    }
 
-            Account saved = accountRepository.save(account);
+    // ── Account number generation ─────────────────────────────────────────────
+    // Produces a DE-format IBAN: DE<CC><BANK_CODE><9 random digits><Luhn>
+    // BBAN = 8-digit bank code + 9 random digits + 1 Luhn digit = 18 digits
+    // Full IBAN = "DE" + 2 check digits + 18-digit BBAN = 22 characters
+    private String generateAccountNumber() {
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
 
-            return new AccountResponse(
-                    saved.getAccountId(),
-                    saved.getAccountNumber(),
-                    saved.getAccountStatus(),
-                    saved.getBalance(),
-                    saved.getCreatedAt()
+            // 9 random individual account digits
+            String accountPart = String.format(
+                    "%0" + ACCOUNT_DIGITS + "d",
+                    RANDOM.nextLong(1_000_000_000L) // 10^9
             );
-        }
 
-        @Override
-        @Transactional
-        public AccountResponse changeStatus(Long accountId, UpdateAccountRequest updateAccountRequest) {
-            Account account = accountRepository.findById(accountId)
-                    .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+            // 17-digit payload → append Luhn to get 18-digit BBAN
+            String payload17 = BANK_CODE + accountPart;
+            int    luhn      = luhnCheckDigit(payload17);
+            String bban      = payload17 + luhn; // 18 digits
 
-            account.setAccountStatus(updateAccountRequest.accountStatus());
-            Account saved = accountRepository.save(account);
+            // Two MOD-97 IBAN check digits
+            String checkDigits = ibanCheckDigits(COUNTRY_CODE, bban);
 
-            return new AccountResponse(
-                    saved.getAccountId(),
-                    saved.getAccountNumber(),
-                    saved.getAccountStatus(),
-                    saved.getBalance(),
-                    saved.getCreatedAt()
-            );
-        }
+            // Full IBAN
+            String iban = COUNTRY_CODE + checkDigits + bban;
 
-
-        @Override
-        @Transactional
-        public void removeAccount(Long customerId, Long accountId) {
-            Account account = accountRepository.findById(accountId)
-                    .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
-
-            if (!account.getCustomer().getCustomerId().equals(customerId)){
-                throw new BadRequestException("Account does not belong to this Customer");
+            if (!accountRepository.existsByAccountNumber(iban)) {
+                return iban;
             }
-
-            if (account.getBalance().compareTo(BigDecimal.ZERO) != 0) {
-                throw new BadRequestException("Cannot close account with remaining balance");
-            }
-
-            account.setDeletedAt(LocalDateTime.now()); // soft delete
-            account.setAccountStatus(AccountStatus.CLOSED);
-            accountRepository.save(account);
         }
+        throw new IllegalStateException(
+                "Could not generate unique account number after " + MAX_RETRIES + " attempts");
+    }
+
+    // ── Service methods (unchanged logic) ─────────────────────────────────────
+
+    @Override
+    @Transactional
+    public AccountResponse createAccount(Long customerId,
+                                          CreateAccountRequest createAccountRequest) {
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Customer Not Found: " + customerId));
+
+        if (createAccountRequest.initialBalance()
+                .compareTo(BigDecimal.ZERO) < 0) {
+            throw new BadRequestException("Balance cannot be negative");
+        }
+
+        Account account = new Account(
+                generateAccountNumber(),
+                createAccountRequest.initialBalance());
+
+        customer.addAccount(account);
+        Account saved = accountRepository.save(account);
+
+        return new AccountResponse(
+                saved.getAccountId(),
+                saved.getAccountNumber(),
+                saved.getAccountStatus(),
+                saved.getBalance(),
+                saved.getCreatedAt());
+    }
+
+    @Override
+    @Transactional
+    public AccountResponse changeStatus(Long accountId,
+                                         UpdateAccountRequest updateAccountRequest) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Account Not Found: " + accountId));
+
+        account.setAccountStatus(updateAccountRequest.accountStatus());
+        Account saved = accountRepository.save(account);
+
+        return new AccountResponse(
+                saved.getAccountId(),
+                saved.getAccountNumber(),
+                saved.getAccountStatus(),
+                saved.getBalance(),
+                saved.getCreatedAt());
+    }
+
+    @Override
+    @Transactional
+    public void removeAccount(Long customerId, Long accountId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Account Not Found: " + accountId));
+
+        if (!account.getCustomer().getCustomerId().equals(customerId)) {
+            throw new BadRequestException(
+                    "Account does not belong to this Customer");
+        }
+
+        if (account.getBalance().compareTo(BigDecimal.ZERO) != 0) {
+            throw new BadRequestException(
+                    "Cannot close account with remaining balance");
+        }
+
+        account.setDeletedAt(LocalDateTime.now());
+        account.setAccountStatus(AccountStatus.CLOSED);
+        accountRepository.save(account);
+    }
 }

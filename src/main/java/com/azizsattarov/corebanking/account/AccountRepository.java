@@ -17,4 +17,6 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     // Used by middleware login to resolve accountNumber → Account
     @Query("select a from Account a where a.accountNumber = :num")
     Optional<Account> findByAccountNumber(@Param("num") String num);
+
+    boolean existsByAccountNumber(String accountNumber);
 }
