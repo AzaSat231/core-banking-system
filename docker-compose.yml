@@ -1,31 +1,56 @@
+# PostgreSQL TLS: run ../../graduation_project/scripts/gen_postgres_server_cert.sh first.
+# Certs default to ~/atm-tls/postgres (override with ATM_TLS_POSTGRES_DIR).
+
+x-postgres-ssl: &postgres-ssl
+  image: postgres:latest
+  networks: [db]
+  restart: unless-stopped
+  entrypoint:
+    - bash
+    - -ec
+    - |
+      set -e
+      test -f /mnt/ssl/server.crt && test -f /mnt/ssl/server.key || {
+        echo "Missing /mnt/ssl/server.crt or server.key — run gen_postgres_server_cert.sh"
+        exit 1
+      }
+      install -d -o postgres -g postgres -m 700 /var/lib/postgresql/ssl-int
+      install -o postgres -g postgres -m 644 /mnt/ssl/server.crt /var/lib/postgresql/ssl-int/server.crt
+      install -o postgres -g postgres -m 600 /mnt/ssl/server.key /var/lib/postgresql/ssl-int/server.key
+      exec docker-entrypoint.sh postgres \
+        -c ssl=on \
+        -c ssl_cert_file=/var/lib/postgresql/ssl-int/server.crt \
+        -c ssl_key_file=/var/lib/postgresql/ssl-int/server.key \
+        -c hba_file=/etc/postgresql/pg_hba.conf
+
 services:
   db:
+    <<: *postgres-ssl
     container_name: postgres-spring-boot
-    image: postgres:latest
     environment:
       POSTGRES_USER: dbv1
       POSTGRES_PASSWORD: pass123
       PGDATA: /data/postgres
     volumes:
       - db:/data/postgres
+      - ${ATM_TLS_POSTGRES_DIR:-${HOME}/atm-tls/postgres}:/mnt/ssl:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
       - "5332:5432"
-    networks: [db]
-    restart: unless-stopped
 
   middleware-db:
+    <<: *postgres-ssl
     container_name: postgres-middleware
-    image: postgres:latest
     environment:
       POSTGRES_USER: mwuser
       POSTGRES_PASSWORD: mwpass
       PGDATA: /data/postgres
     volumes:
       - middleware-db:/data/postgres
+      - ${ATM_TLS_POSTGRES_DIR:-${HOME}/atm-tls/postgres}:/mnt/ssl:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     ports:
       - "5433:5432"
-    networks: [db]
-    restart: unless-stopped
 
 networks:
   db:
