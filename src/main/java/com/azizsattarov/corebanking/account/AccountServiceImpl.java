@@ -2,6 +2,7 @@ package com.azizsattarov.corebanking.account;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.account.dto.CreateAccountRequest;
@@ -19,6 +20,12 @@ public class AccountServiceImpl implements AccountService {
     private final AccountRepository accountRepository;
     private final CustomerRepository customerRepository;
 
+    // ── Industry limits ────────────────────────────────────────────────────────
+    // Based on standard retail banking policy (EU / German market):
+    //   - Most retail banks allow 3–5 accounts per customer (current, savings, etc.)
+    //   - We set 5 as the ceiling; exceptions require admin override.
+    private static final int MAX_ACCOUNTS_PER_CUSTOMER = 5;
+
     // ISO 13616 — Germany (DE), BBAN structure: 8!n 10!n, total IBAN length 22
     // Bank identifier (Bankleitzahl): 8 digits, fixed per institution
     private static final String COUNTRY_CODE  = "DE";
@@ -28,14 +35,12 @@ public class AccountServiceImpl implements AccountService {
     private static final java.util.Random RANDOM = new java.util.Random();
 
     public AccountServiceImpl(AccountRepository accountRepository,
-                               CustomerRepository customerRepository) {
+                              CustomerRepository customerRepository) {
         this.accountRepository  = accountRepository;
         this.customerRepository = customerRepository;
     }
 
     // ── Luhn check digit (ISO/IEC 7812-1) ────────────────────────────────────
-    // Appended to the 17-digit BBAN payload (bank code + account digits)
-    // to produce the final 18-digit BBAN.
     private static int luhnCheckDigit(String number) {
         int sum = 0;
         boolean alternate = true;
@@ -52,59 +57,35 @@ public class AccountServiceImpl implements AccountService {
     }
 
     // ── MOD-97 check digits (ISO/IEC 7064 MOD97-10) ──────────────────────────
-    // Computes the two IBAN check digits CC in: DE CC <BBAN>
-    // Steps per ISO 13616-1:
-    //   1. Move country code + "00" to the end of the BBAN
-    //   2. Replace each letter with its numeric equivalent (A=10, B=11, …)
-    //   3. Compute 98 − (numeric string MOD 97)
     private static String ibanCheckDigits(String countryCode, String bban) {
-        // Step 1: rearrange — BBAN + country letters + "00"
         String rearranged = bban + countryCode + "00";
-
-        // Step 2: letters → digits
         StringBuilder numeric = new StringBuilder();
         for (char c : rearranged.toCharArray()) {
             if (Character.isLetter(c)) {
-                numeric.append(Character.getNumericValue(c)); // A=10 … Z=35
+                numeric.append(Character.getNumericValue(c));
             } else {
                 numeric.append(c);
             }
         }
-
-        // Step 3: MOD 97 on arbitrarily large number (process in chunks)
         java.math.BigInteger bigInt =
                 new java.math.BigInteger(numeric.toString());
         int remainder = bigInt.mod(java.math.BigInteger.valueOf(97)).intValue();
         int checkValue = 98 - remainder;
-
-        // Check digits are always two characters, zero-padded if needed
         return String.format("%02d", checkValue);
     }
 
     // ── Account number generation ─────────────────────────────────────────────
-    // Produces a DE-format IBAN: DE<CC><BANK_CODE><9 random digits><Luhn>
-    // BBAN = 8-digit bank code + 9 random digits + 1 Luhn digit = 18 digits
-    // Full IBAN = "DE" + 2 check digits + 18-digit BBAN = 22 characters
     private String generateAccountNumber() {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-
-            // 9 random individual account digits
             String accountPart = String.format(
                     "%0" + ACCOUNT_DIGITS + "d",
-                    RANDOM.nextLong(1_000_000_000L) // 10^9
+                    RANDOM.nextLong(1_000_000_000L)
             );
-
-            // 17-digit payload → append Luhn to get 18-digit BBAN
             String payload17 = BANK_CODE + accountPart;
             int    luhn      = luhnCheckDigit(payload17);
-            String bban      = payload17 + luhn; // 18 digits
-
-            // Two MOD-97 IBAN check digits
+            String bban      = payload17 + luhn;
             String checkDigits = ibanCheckDigits(COUNTRY_CODE, bban);
-
-            // Full IBAN
             String iban = COUNTRY_CODE + checkDigits + bban;
-
             if (!accountRepository.existsByAccountNumber(iban)) {
                 return iban;
             }
@@ -113,15 +94,27 @@ public class AccountServiceImpl implements AccountService {
                 "Could not generate unique account number after " + MAX_RETRIES + " attempts");
     }
 
-    // ── Service methods (unchanged logic) ─────────────────────────────────────
+    // ── Service methods ────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public AccountResponse createAccount(Long customerId,
-                                          CreateAccountRequest createAccountRequest) {
+                                         CreateAccountRequest createAccountRequest) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException(
                         "Customer Not Found: " + customerId));
+
+        // ── Industry limit check ───────────────────────────────────────────────
+        long activeAccountCount = customer.getAccounts().stream()
+                .filter(a -> a.getAccountStatus() != AccountStatus.CLOSED)
+                .count();
+
+        if (activeAccountCount >= MAX_ACCOUNTS_PER_CUSTOMER) {
+            throw new BadRequestException(
+                    "Customer already has " + activeAccountCount + " active account(s). " +
+                            "Maximum allowed per customer is " + MAX_ACCOUNTS_PER_CUSTOMER + ". " +
+                            "Please close an existing account before opening a new one.");
+        }
 
         if (createAccountRequest.initialBalance()
                 .compareTo(BigDecimal.ZERO) < 0) {
@@ -146,7 +139,7 @@ public class AccountServiceImpl implements AccountService {
     @Override
     @Transactional
     public AccountResponse changeStatus(Long accountId,
-                                         UpdateAccountRequest updateAccountRequest) {
+                                        UpdateAccountRequest updateAccountRequest) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException(
                         "Account Not Found: " + accountId));

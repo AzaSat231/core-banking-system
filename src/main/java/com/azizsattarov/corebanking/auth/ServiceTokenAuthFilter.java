@@ -15,17 +15,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Authenticates the in-middleware reconciliation worker for /admin/** endpoints.
+ * Authenticates the middleware / reconciliation worker for service-only endpoints.
  *
- * The worker sends `X-Service-Token: <shared secret>`. If it matches
+ * The caller sends `X-Service-Token: <shared secret>`. If it matches
  * `app.middleware.service-token`, the request is granted ROLE_SERVICE. No JWT
- * is involved, so a leaked user JWT cannot reach admin endpoints.
+ * is involved, so a leaked user JWT cannot reach these endpoints.
  *
- * If the configured token is empty/blank, all admin requests are rejected
- * (defense-in-default). Set the value in application.properties or via the
- * MIDDLEWARE_SERVICE_TOKEN environment variable in production.
+ * Protected paths (POST only unless noted):
+ *   /admin/**                       — blockchain reconciliation worker
+ *   /atm/reset-pin                  — PIN reset after admin unlock
+ *   /atm/create-card-for-account    — self-service card issuance (new)
+ *   /atm/set-own-pin                — self-service initial PIN setup (new)
+ *
+ * If the configured token is empty/blank, all service requests are rejected
+ * (defense-in-default). Set the value via the MIDDLEWARE_SERVICE_TOKEN
+ * environment variable or keychain entry in production.
  */
 @Component
 @Order(1)
@@ -34,6 +41,14 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Service-Token";
 
     private final String configuredToken;
+
+    // Exact-match paths that require the service token (method-agnostic check
+    // is fine here; method restrictions are enforced by SecurityConfig).
+    private static final Set<String> SERVICE_PATHS = Set.of(
+            "/atm/reset-pin",
+            "/atm/create-card-for-account",
+            "/atm/set-own-pin"
+    );
 
     public ServiceTokenAuthFilter(
             @Value("${app.middleware.service-token:}") String configuredToken) {
@@ -46,11 +61,14 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
                                     FilterChain chain)
             throws ServletException, IOException {
 
-        String path = request.getRequestURI();
-        boolean adminPath = path != null && path.startsWith("/admin/");
-        boolean atmResetPin = path != null && "/atm/reset-pin".equals(path)
-                && "POST".equalsIgnoreCase(request.getMethod());
-        if (!adminPath && !atmResetPin) {
+        String path   = request.getRequestURI();
+        String method = request.getMethod();
+
+        boolean adminPath   = path != null && path.startsWith("/admin/");
+        boolean servicePath = path != null && SERVICE_PATHS.contains(path)
+                && "POST".equalsIgnoreCase(method);
+
+        if (!adminPath && !servicePath) {
             chain.doFilter(request, response);
             return;
         }

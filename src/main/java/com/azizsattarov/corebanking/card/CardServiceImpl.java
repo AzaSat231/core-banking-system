@@ -19,8 +19,13 @@ import java.util.Random;
 @Service
 public class CardServiceImpl implements CardService {
 
+    // ── Industry limits ────────────────────────────────────────────────────────
+    // Standard retail banking: 2–3 cards per account (primary + supplementary).
+    // EU Payment Services Directive and most German retail banks cap at 3.
+    // We set 3 as the ceiling; admin can cancel/replace but not exceed.
+    private static final int MAX_CARDS_PER_ACCOUNT = 3;
+
     // BIN/IIN for cards — same bank prefix as account numbers.
-    // Cards use a separate 8-digit BIN to distinguish them from account numbers.
     private static final String CARD_BIN = "62260099";
     private static final Random RANDOM     = new Random();
     private static final int    MAX_RETRIES = 10;
@@ -33,7 +38,7 @@ public class CardServiceImpl implements CardService {
         this.accountRepository = accountRepository;
     }
 
-    // ── Luhn check digit (same algorithm used in AccountServiceImpl) ──────────
+    // ── Luhn check digit ──────────────────────────────────────────────────────
     private static int luhnCheckDigit(String number) {
         int sum = 0;
         boolean alt   = true;
@@ -48,10 +53,10 @@ public class CardServiceImpl implements CardService {
 
     private String generateCardNumber() {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            String mid       = String.format("%07d", RANDOM.nextInt(10_000_000)); // 7 digits like account
-            String base15    = CARD_BIN + mid;                                    // 8 + 7 = 15
-            int    check     = luhnCheckDigit(base15);                            // 1 Luhn digit
-            String candidate = base15 + check;                                    // 16 total
+            String mid       = String.format("%07d", RANDOM.nextInt(10_000_000));
+            String base15    = CARD_BIN + mid;
+            int    check     = luhnCheckDigit(base15);
+            String candidate = base15 + check;
             if (!cardRepository.existsByCardNumber(candidate)) return candidate;
         }
         throw new IllegalStateException("Could not generate unique card number after " + MAX_RETRIES + " attempts");
@@ -89,6 +94,20 @@ public class CardServiceImpl implements CardService {
                     "Cannot issue card for a " + account.getAccountStatus() + " account");
         }
 
+        // ── Industry limit check ───────────────────────────────────────────────
+        long activeCardCount = cardRepository.findByAccountId(accountId)
+                .stream()
+                .filter(c -> c.getCardStatus() != CardStatus.CANCELLED
+                        && c.getCardStatus() != CardStatus.EXPIRED)
+                .count();
+
+        if (activeCardCount >= MAX_CARDS_PER_ACCOUNT) {
+            throw new BadRequestException(
+                    "This account already has " + activeCardCount + " active card(s). " +
+                            "Maximum allowed per account is " + MAX_CARDS_PER_ACCOUNT + ". " +
+                            "Cancel or expire an existing card before issuing a new one.");
+        }
+
         String holderName = (request.holderName() != null && !request.holderName().isBlank())
                 ? request.holderName().trim().toUpperCase()
                 : (account.getCustomer().getFirstName() + " " + account.getCustomer().getLastName()).toUpperCase();
@@ -100,29 +119,14 @@ public class CardServiceImpl implements CardService {
         Card card = new Card(
                 generateCardNumber(),
                 holderName,
-                LocalDate.now().plusYears(3)   // 3-year expiry
+                LocalDate.now().plusYears(3)
         );
         card.setAccount(account);
+        // PIN is intentionally NOT set here.
+        // The customer sets their own PIN at the ATM kiosk after card issuance.
         Card saved = cardRepository.save(card);
         return toResponse(saved);
     }
-
-    /*
-
-    The flow of security check
-
-    Customer A has account DE6226009911111111. They log in and get JWT with subject ATM_DE6226009911111111.
-    Customer A tries to call GET /accounts/999/cards where account 999 belongs to Customer B with account number DE6226009922222222.
-    Step 1 — loads account 999 from DB, gets account number DE6226009922222222.
-    Step 2 — reads JWT subject: ATM_DE6226009911111111.
-    Step 3 — subject starts with ATM_ so check runs.
-    Step 4 — compares:
-    auth.getName()                    = "ATM_DE6226009911111111"
-    "ATM_" + account.getAccountNumber() = "ATM_DE6226009922222222"
-    They don't match → throws BadRequestException("Forbidden: account mismatch") → HTTP 400.
-    Customer A never sees Customer B's cards
-
-     */
 
     @Override
     @Transactional(readOnly = true)

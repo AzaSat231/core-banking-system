@@ -46,41 +46,47 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).hasRole("ADMIN")
 
-                        // ATM login is public — called by middleware only
+                        // ── ATM public endpoints ───────────────────────────────
+                        // Card login and resolve — called by middleware before a session exists
                         .requestMatchers(HttpMethod.POST, "/atm/login").permitAll()
-                        // BUG FIX: resolve-card must be public so middleware can call it
-                        // before a session/JWT exists (it's called before PIN entry).
-                        // The endpoint only returns the account number that is already
-                        // printed on receipts — no sensitive data is exposed.
-                        .requestMatchers(HttpMethod.GET, "/atm/resolve-card").permitAll()
-                        // Customer PIN reset after admin unlock — middleware service token only
+                        .requestMatchers(HttpMethod.GET,  "/atm/resolve-card").permitAll()
+
+                        // ── ATM self-service card + PIN setup ─────────────────
+                        // Both gated by ROLE_SERVICE (middleware service token).
+                        // The middleware rate-limits and validates these before forwarding.
+                        // Customers never call Core Banking directly — only middleware does.
+                        .requestMatchers(HttpMethod.POST, "/atm/create-card-for-account").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.POST, "/atm/set-own-pin").hasRole("SERVICE")
+
+                        // Customer PIN reset after admin unlock — middleware service token
                         .requestMatchers(HttpMethod.POST, "/atm/reset-pin").hasRole("SERVICE")
-                        // Set PIN requires admin JWT
+
+                        // Set PIN by admin at branch — requires admin JWT
                         .requestMatchers(HttpMethod.POST, "/atm/set-pin").hasRole("ADMIN")
 
-                        // Customers
-                        .requestMatchers(HttpMethod.GET, "/customers/{customerId}/accounts").hasAnyRole("ADMIN", "USER")
-                        .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")
+                        // ── Customers ──────────────────────────────────────────
+                        .requestMatchers(HttpMethod.GET,    "/customers/{customerId}/accounts").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(HttpMethod.POST,   "/customers").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT,    "/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")
 
-                        // Accounts
-                        .requestMatchers(HttpMethod.GET, "/customers/*/accounts").hasAnyRole("ADMIN", "USER")
-                        .requestMatchers(HttpMethod.POST, "/customers/*/accounts").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/customers/*/accounts/**").hasRole("ADMIN")
+                        // ── Accounts ───────────────────────────────────────────
+                        .requestMatchers(HttpMethod.GET,    "/customers/*/accounts").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(HttpMethod.POST,   "/customers/*/accounts").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH,  "/customers/*/accounts/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/customers/*/accounts/**").hasRole("ADMIN")
 
-                        // Transactions
-                        .requestMatchers(HttpMethod.GET, "/accounts/*/transactions").hasAnyRole("ADMIN", "USER")
+                        // ── Transactions ───────────────────────────────────────
+                        .requestMatchers(HttpMethod.GET,  "/accounts/*/transactions").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/accounts/**").hasAnyRole("ADMIN", "USER")
 
-                        // Cards — list is allowed for account owner (USER); issue/block/cancel = ADMIN only
+                        // ── Cards ──────────────────────────────────────────────
                         .requestMatchers(HttpMethod.GET,    "/accounts/*/cards").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST,   "/accounts/*/cards").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH,  "/accounts/*/cards/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/accounts/*/cards/**").hasRole("ADMIN")
 
-                        // Reconciliation worker — gated by ServiceTokenAuthFilter
+                        // ── Reconciliation worker ──────────────────────────────
                         .requestMatchers("/admin/**").hasRole("SERVICE")
 
                         .anyRequest().authenticated()

@@ -5,9 +5,10 @@ import com.azizsattarov.corebanking.account.AccountRepository;
 import com.azizsattarov.corebanking.auth.JwtUtil;
 import com.azizsattarov.corebanking.card.Card;
 import com.azizsattarov.corebanking.card.CardRepository;
+import com.azizsattarov.corebanking.card.CardService;
 import com.azizsattarov.corebanking.card.CardStatus;
+import com.azizsattarov.corebanking.card.dto.IssueCardRequest;
 import com.azizsattarov.corebanking.customer.Customer;
-import com.azizsattarov.corebanking.customer.CustomerRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -20,35 +21,26 @@ import java.util.Map;
 public class AtmAuthController {
 
     private final CardRepository cardRepository;
+    private final AccountRepository accountRepository;
+    private final CardService cardService;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
 
     public AtmAuthController(CardRepository cardRepository,
+                             AccountRepository accountRepository,
+                             CardService cardService,
                              JwtUtil jwtUtil,
                              PasswordEncoder passwordEncoder) {
-        this.cardRepository = cardRepository;
-        this.jwtUtil = jwtUtil;
-        this.passwordEncoder = passwordEncoder;
+        this.cardRepository    = cardRepository;
+        this.accountRepository = accountRepository;
+        this.cardService       = cardService;
+        this.jwtUtil           = jwtUtil;
+        this.passwordEncoder   = passwordEncoder;
     }
 
     /**
      * Resolve a card number to its associated account number — no PIN required.
-     *
-     * Called by the middleware BEFORE the lockout check so lockouts can be keyed
-     * by accountNumber rather than cardNumber.  One customer may have several
-     * cards; all cards for the same account share a single lockout counter.
-     *
-     * Returns:
-     *   200  { accountNumber: "..." }  — card exists and is not CANCELLED
-     *   404  { error: "..." }          — card not found
-     *   403  { error: "..." }          — card is CANCELLED (treat same as not found
-     *                                    from the ATM's perspective)
-     *
-     * Security: this endpoint reveals only the account number that the card
-     * belongs to.  The account number is already printed on receipts and known
-     * to the card holder, so no sensitive data is exposed.  The endpoint is
-     * intentionally unauthenticated so the middleware can call it before the
-     * customer enters their PIN.
+     * Called by the middleware BEFORE the lockout check.
      */
     @GetMapping("/resolve-card")
     public ResponseEntity<?> resolveCard(@RequestParam String cardNumber) {
@@ -65,6 +57,118 @@ public class AtmAuthController {
 
         return ResponseEntity.ok(Map.of(
                 "accountNumber", card.getAccount().getAccountNumber()
+        ));
+    }
+
+    // ── Self-service card creation ─────────────────────────────────────────────
+
+    /**
+     * Step 1 of self-service card setup (called by ATM after customer enters account number).
+     *
+     * The customer has NO card yet — they visit the ATM, enter their account number,
+     * and this endpoint issues a card for them automatically. The card has NO PIN set.
+     * The customer must call /atm/set-own-pin next to activate it.
+     *
+     * Security:
+     *   - Requires the account to exist and be ACTIVE
+     *   - Does NOT require an existing card or PIN (this is first-time setup)
+     *   - Does NOT return the full card number — returns only the masked number
+     *     and the cardId needed for PIN setup, so no sensitive data is exposed
+     *     over this unauthenticated channel
+     *   - Accessible only via ROLE_SERVICE (middleware) — never called directly
+     *     by the ATM UI; the middleware proxies it and rate-limits the caller
+     *
+     * Returns:
+     *   201  { cardId, maskedCardNumber, accountNumber, customerName }
+     *   400  { error }  — account not active or card limit reached
+     *   404  { error }  — account not found
+     */
+    @PostMapping("/create-card-for-account")
+    public ResponseEntity<?> createCardForAccount(@RequestBody Map<String, String> body) {
+        String accountNumber = body.get("accountNumber");
+
+        if (accountNumber == null || accountNumber.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber is required"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(accountNumber).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404)
+                    .body(Map.of("error", "Account not found"));
+        }
+        if (!account.isActive()) {
+            return ResponseEntity.status(400)
+                    .body(Map.of("error", "Account is " + account.getAccountStatus()));
+        }
+
+        // Delegate to CardService which enforces the MAX_CARDS_PER_ACCOUNT limit
+        var cardResponse = cardService.issueCard(
+                account.getAccountId(),
+                new IssueCardRequest(null) // holderName defaults to customer name
+        );
+
+        Customer customer = account.getCustomer();
+
+        return ResponseEntity.status(201).body(Map.of(
+                "cardId",         cardResponse.cardId(),
+                "maskedNumber",   cardResponse.maskedNumber(),
+                "accountNumber",  account.getAccountNumber(),
+                "customerName",   customer.getFirstName() + " " + customer.getLastName(),
+                "message",        "Card created. Please set your PIN to activate it."
+        ));
+    }
+
+    /**
+     * Step 2 of self-service card setup — customer sets their own PIN.
+     *
+     * Called after /atm/create-card-for-account returns a cardId.
+     * The customer enters the PIN twice; the ATM UI confirms they match before
+     * calling this endpoint.
+     *
+     * This endpoint is intentionally separate from /atm/set-pin (admin use only).
+     * It is gated by ROLE_SERVICE so the middleware controls access.
+     *
+     * After this call the card is fully activated and the customer can log in
+     * using their card number + PIN.
+     */
+    @PostMapping("/set-own-pin")
+    public ResponseEntity<?> setOwnPin(@RequestBody Map<String, String> body) {
+        String cardIdStr = body.get("cardId");
+        String pin       = body.get("pin");
+
+        if (cardIdStr == null || pin == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "cardId and pin are required"));
+        }
+        if (!pin.matches("\\d{4}")) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "PIN must be exactly 4 digits"));
+        }
+
+        Card card = cardRepository.findById(Long.parseLong(cardIdStr)).orElse(null);
+        if (card == null) return ResponseEntity.notFound().build();
+
+        // Safety check: only allow setting PIN if no PIN is set yet (first-time setup).
+        // For PIN reset after admin unlock, the customer uses /atm/reset-pin instead.
+        if (card.getPinHash() != null) {
+            return ResponseEntity.status(400)
+                    .body(Map.of("error",
+                            "PIN is already set for this card. Use the reset flow instead."));
+        }
+
+        if (!card.getAccount().isActive()) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Account is " + card.getAccount().getAccountStatus()));
+        }
+
+        card.setPinHash(passwordEncoder.encode(pin));
+        cardRepository.save(card);
+
+        return ResponseEntity.ok(Map.of(
+                "message",        "PIN set successfully. Your card is now active.",
+                "maskedNumber",   "**** **** **** " + card.getCardNumber().substring(12),
+                "accountNumber",  card.getAccount().getAccountNumber()
         ));
     }
 
@@ -108,7 +212,7 @@ public class AtmAuthController {
         }
         if (card.getPinHash() == null) {
             return ResponseEntity.status(401)
-                    .body(Map.of("error", "PIN not set for this card. Contact a branch."));
+                    .body(Map.of("error", "PIN not set for this card. Please visit an ATM to set your PIN."));
         }
         if (!passwordEncoder.matches(pin, card.getPinHash())) {
             return ResponseEntity.status(401)
@@ -134,7 +238,8 @@ public class AtmAuthController {
         ));
     }
 
-    // ── Set PIN ───────────────────────────────────────────────────────────────
+    // ── Admin: Set PIN (ROLE_ADMIN) ────────────────────────────────────────────
+    // Kept for admin branch operations (e.g. issuing a card at a physical branch).
 
     @PostMapping("/set-pin")
     public ResponseEntity<?> setPin(@RequestBody Map<String, String> body) {
@@ -159,7 +264,7 @@ public class AtmAuthController {
         return ResponseEntity.ok(Map.of("message", "PIN set for card " + card.getCardNumber()));
     }
 
-    // ── Reset PIN ─────────────────────────────────────────────────────────────
+    // ── Reset PIN (ROLE_SERVICE — middleware after admin unlock) ──────────────
 
     @PostMapping("/reset-pin")
     public ResponseEntity<?> resetPin(@RequestBody Map<String, String> body) {
