@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,6 +28,7 @@ import java.util.List;
  * MIDDLEWARE_SERVICE_TOKEN environment variable in production.
  */
 @Component
+@Order(1)
 public class ServiceTokenAuthFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Service-Token";

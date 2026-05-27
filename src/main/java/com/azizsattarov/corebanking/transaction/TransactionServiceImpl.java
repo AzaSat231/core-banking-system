@@ -7,6 +7,8 @@ import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.dto.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +30,29 @@ public class TransactionServiceImpl implements TransactionService {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.defaultAckTimeoutSeconds = defaultAckTimeoutSeconds;
+    }
+
+
+    private void assertOwnership(Account account) {
+
+        // Step 2: get the JWT principal from Spring Security context
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null) return;
+        String principal = auth.getName();
+
+        // Step 3: only check if caller is an ATM session (starts with ATM_)
+        // Admin JWTs (subject = "admin") skip this check intentionally
+        // ATM sessions have subject "ATM_<accountNumber>"
+        if (principal.startsWith("ATM_")) {
+            String expected = "ATM_" + account.getAccountNumber();
+
+            // Step 4: build what the principal SHOULD be for this account
+            // and compare against what it actually IS
+            if (!principal.equals(expected)) {
+                throw new BadRequestException("Forbidden: account mismatch");
+            }
+        }
     }
 
     private TransactionResponse toResponse(Transaction transaction) {
@@ -63,8 +88,21 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionResponse deposit(Long accountId, DepositRequest depositRequest) {
+        // Fast ownership pre-check without lock
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName().startsWith("ATM_")) {
+            Account preCheck = accountRepository.findById(accountId)
+                    .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+            if (!auth.getName().equals("ATM_" + preCheck.getAccountNumber())) {
+                throw new BadRequestException("Forbidden: account mismatch");
+            }
+        }
+
+        // Now acquire the lock
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        assertOwnership(account);
 
         if (!account.isActive())
             throw new BadRequestException("Deposit failed: This account is " + account.getAccountStatus());
@@ -92,8 +130,20 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionResponse withdraw(Long accountId,
                                         WithdrawRequest withdrawRequest,
                                         Integer ackTimeoutSeconds) {
+        // Fast ownership pre-check without lock
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName().startsWith("ATM_")) {
+            Account preCheck = accountRepository.findById(accountId)
+                    .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+            if (!auth.getName().equals("ATM_" + preCheck.getAccountNumber())) {
+                throw new BadRequestException("Forbidden: account mismatch");
+            }
+        }
+
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        assertOwnership(account);
 
         if (!account.isActive())
             throw new BadRequestException("Withdraw failed: This account is " + account.getAccountStatus());
@@ -130,6 +180,9 @@ public class TransactionServiceImpl implements TransactionService {
         if (!transaction.getAccount().getAccountId().equals(accountId)) {
             throw new BadRequestException("Transaction does not belong to this account");
         }
+
+        assertOwnership(transaction.getAccount());
+
         if (transaction.getTransactionType() != TransactionType.WITHDRAW) {
             throw new BadRequestException("Only withdrawals require dispense confirmation");
         }
@@ -207,6 +260,8 @@ public class TransactionServiceImpl implements TransactionService {
         Account accountFrom = accountFromId.equals(a1.getAccountId()) ? a1 : a2;
         Account accountTo   = transferRequest.toAccountId().equals(a1.getAccountId()) ? a1 : a2;
 
+        assertOwnership(accountFrom);
+
         if (!accountFrom.isActive())
             throw new BadRequestException("Transfer failed: Account " + accountFrom.getAccountNumber() + " is " + accountFrom.getAccountStatus());
         if (!accountTo.isActive())
@@ -250,8 +305,12 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional(readOnly = true)
     public List<TransactionResponse> getTransactionHistory(Long accountId) {
-        if (!accountRepository.existsById(accountId))
-            throw new NotFoundException("Account Not Found: " + accountId);
+        // Step 1: load the account from DB using the URL accountId
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        // Check if accessible to the account number or not
+        assertOwnership(account);
 
         return transactionRepository.findByAccountId(accountId)
                 .stream()

@@ -23,6 +23,8 @@ public class AppUserDetailsService implements UserDetailsService {
         return org.springframework.security.core.userdetails.User
                 .withUsername(user.getUsername())
                 .password(user.getPassword())
+                // NOTE: UserRole enum values already include ROLE_ prefix (e.g. ROLE_ADMIN).
+                // Use .authorities() here, NOT .roles() — .roles() would double-prefix to ROLE_ROLE_ADMIN.
                 .authorities(user.getRole().name())
                 .build();
     }

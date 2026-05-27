@@ -1,5 +1,6 @@
 package com.azizsattarov.corebanking.customer;
 
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 
 import com.azizsattarov.corebanking.account.dto.AccountResponse;
@@ -7,6 +8,8 @@ import com.azizsattarov.corebanking.customer.dto.CreateCustomerRequest;
 import com.azizsattarov.corebanking.customer.dto.CustomerResponse;
 import com.azizsattarov.corebanking.customer.dto.UpdateCustomerRequest;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,8 +30,9 @@ public class CustomerController {
     }
 
     @GetMapping
-    public List<CustomerResponse> fetchDepartmentList() {
-        return customerService.fetchCustomerList();
+    public Page<CustomerResponse> fetchCustomerList(
+            @PageableDefault(size = 50, sort = "createdAt") Pageable pageable) {
+        return customerService.fetchCustomerList(pageable);
     }
 
     @GetMapping("/{customerId}/accounts")

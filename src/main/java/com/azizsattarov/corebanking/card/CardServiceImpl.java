@@ -7,6 +7,8 @@ import com.azizsattarov.corebanking.card.dto.IssueCardRequest;
 import com.azizsattarov.corebanking.card.dto.UpdateCardRequest;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -105,12 +107,45 @@ public class CardServiceImpl implements CardService {
         return toResponse(saved);
     }
 
+    /*
+
+    The flow of security check
+
+    Customer A has account DE6226009911111111. They log in and get JWT with subject ATM_DE6226009911111111.
+    Customer A tries to call GET /accounts/999/cards where account 999 belongs to Customer B with account number DE6226009922222222.
+    Step 1 — loads account 999 from DB, gets account number DE6226009922222222.
+    Step 2 — reads JWT subject: ATM_DE6226009911111111.
+    Step 3 — subject starts with ATM_ so check runs.
+    Step 4 — compares:
+    auth.getName()                    = "ATM_DE6226009911111111"
+    "ATM_" + account.getAccountNumber() = "ATM_DE6226009922222222"
+    They don't match → throws BadRequestException("Forbidden: account mismatch") → HTTP 400.
+    Customer A never sees Customer B's cards
+
+     */
+
     @Override
     @Transactional(readOnly = true)
     public List<CardResponse> getCardsByAccount(Long accountId) {
-        if (!accountRepository.existsById(accountId)) {
-            throw new NotFoundException("Account not found: " + accountId);
+        // Step 1: load the account from DB using the URL accountId
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
+        // Step 2: get the JWT principal from Spring Security context
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        // Step 3: only check if caller is an ATM session (starts with ATM_)
+        // Admin JWTs (subject = "admin") skip this check intentionally
+        if (auth != null && auth.getName().startsWith("ATM_")) {
+
+            // Step 4: build what the principal SHOULD be for this account
+            // and compare against what it actually IS
+            if (!auth.getName().equals("ATM_" + account.getAccountNumber())) {
+                throw new BadRequestException("Forbidden: account mismatch");
+            }
         }
+
+        // So return card if account owns it
         return cardRepository.findByAccountId(accountId)
                 .stream()
                 .map(this::toResponse)

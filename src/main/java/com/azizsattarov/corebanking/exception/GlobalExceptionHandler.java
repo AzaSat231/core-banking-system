@@ -49,8 +49,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleAny(Exception ex, HttpServletRequest req) {
-        ex.printStackTrace(); // see full trace in IntelliJ console
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getClass().getName() + ": " + ex.getMessage(), req.getRequestURI());
+        ex.printStackTrace();
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.", req.getRequestURI());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -21,11 +21,14 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final ServiceTokenAuthFilter serviceTokenAuthFilter;
+    private final RateLimitFilter rateLimitFilter;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-                          ServiceTokenAuthFilter serviceTokenAuthFilter) {
+                          ServiceTokenAuthFilter serviceTokenAuthFilter,
+                          RateLimitFilter rateLimitFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.serviceTokenAuthFilter = serviceTokenAuthFilter;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     @Bean
@@ -34,13 +37,14 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/auth/register").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                         .requestMatchers(
-                                "/auth/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/api-docs/**",
                                 "/v3/api-docs/**"
-                        ).permitAll()
+                        ).hasRole("ADMIN")
 
                         // ATM login is public — called by middleware only
                         .requestMatchers(HttpMethod.POST, "/atm/login").permitAll()
@@ -55,7 +59,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/atm/set-pin").hasRole("ADMIN")
 
                         // Customers
-                        .requestMatchers(HttpMethod.GET, "/customers/**").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(HttpMethod.GET, "/customers/{customerId}/accounts").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")
@@ -81,6 +85,7 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 

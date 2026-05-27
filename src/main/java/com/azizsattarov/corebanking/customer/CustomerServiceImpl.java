@@ -8,7 +8,12 @@ import com.azizsattarov.corebanking.account.dto.AccountResponse;
 import com.azizsattarov.corebanking.customer.dto.CreateCustomerRequest;
 import com.azizsattarov.corebanking.customer.dto.CustomerResponse;
 import com.azizsattarov.corebanking.customer.dto.UpdateCustomerRequest;
+import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +23,19 @@ public class CustomerServiceImpl implements CustomerService{
 
     public CustomerServiceImpl(CustomerRepository customerRepository) {
         this.customerRepository = customerRepository;
+    }
+
+
+    private void assertCustomerOwnership(Long customerId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return;
+        String principal = auth.getName();
+        if (!principal.startsWith("ATM_")) return;
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
+        boolean owns = customer.getAccounts().stream()
+                .anyMatch(a -> ("ATM_" + a.getAccountNumber()).equals(principal));
+        if (!owns) throw new BadRequestException("Forbidden: account mismatch");
     }
 
     @Override
@@ -46,9 +64,8 @@ public class CustomerServiceImpl implements CustomerService{
     }
 
     @Override
-    public List<CustomerResponse> fetchCustomerList() {
-        return customerRepository.findAll()
-                .stream()
+    public Page<CustomerResponse> fetchCustomerList(Pageable pageable) {
+        return customerRepository.findAll(pageable)
                 .map(customer -> new CustomerResponse(
                         customer.getCustomerId(),
                         customer.getFirstName(),
@@ -58,12 +75,15 @@ public class CustomerServiceImpl implements CustomerService{
                         customer.getPhoneNumber(),
                         customer.getDateOfBirth(),
                         customer.getCreatedAt()
-                ))
-                .toList();
+                ));
     }
 
     @Override
     public List<AccountResponse> getAccountsByCustomer(Long customerId) {
+
+        // Check if accessible to the customer number or not
+        assertCustomerOwnership(customerId);
+
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NotFoundException("Customer not found: " + customerId));
 
