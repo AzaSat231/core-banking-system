@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Card management endpoints.
@@ -50,11 +51,19 @@ public class CardController {
         return ResponseEntity.ok(cardService.updateCardStatus(cardId, request));
     }
 
+    @PostMapping("/{cardId}/send-email")
+    public ResponseEntity<Map<String, String>> sendCardEmail(
+            @PathVariable Long accountId,
+            @PathVariable Long cardId) {
+        cardService.sendCardEmail(accountId, cardId);
+        return ResponseEntity.ok(Map.of("message", "Card email sent."));
+    }
+
     @DeleteMapping("/{cardId}")
     public ResponseEntity<Void> cancelCard(
             @PathVariable Long accountId,
             @PathVariable Long cardId) {
-        cardService.cancelCard(cardId);
+        cardService.cancelCard(accountId, cardId);
         return ResponseEntity.noContent().build();
     }
 }

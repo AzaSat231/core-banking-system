@@ -10,5 +10,6 @@ public interface CardService {
     CardResponse issueCard(Long accountId, IssueCardRequest request);
     List<CardResponse> getCardsByAccount(Long accountId);
     CardResponse updateCardStatus(Long cardId, UpdateCardRequest request);
-    void cancelCard(Long cardId);
+    void sendCardEmail(Long accountId, Long cardId);
+    void cancelCard(Long accountId, Long cardId);
 }

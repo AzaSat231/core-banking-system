@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Map;
 
 @RestController
@@ -85,37 +86,8 @@ public class AtmAuthController {
      */
     @PostMapping("/create-card-for-account")
     public ResponseEntity<?> createCardForAccount(@RequestBody Map<String, String> body) {
-        String accountNumber = body.get("accountNumber");
-
-        if (accountNumber == null || accountNumber.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "accountNumber is required"));
-        }
-
-        Account account = accountRepository.findByAccountNumber(accountNumber).orElse(null);
-        if (account == null) {
-            return ResponseEntity.status(404)
-                    .body(Map.of("error", "Account not found"));
-        }
-        if (!account.isActive()) {
-            return ResponseEntity.status(400)
-                    .body(Map.of("error", "Account is " + account.getAccountStatus()));
-        }
-
-        // Delegate to CardService which enforces the MAX_CARDS_PER_ACCOUNT limit
-        var cardResponse = cardService.issueCard(
-                account.getAccountId(),
-                new IssueCardRequest(null) // holderName defaults to customer name
-        );
-
-        Customer customer = account.getCustomer();
-
-        return ResponseEntity.status(201).body(Map.of(
-                "cardId",         cardResponse.cardId(),
-                "maskedNumber",   cardResponse.maskedNumber(),
-                "accountNumber",  account.getAccountNumber(),
-                "customerName",   customer.getFirstName() + " " + customer.getLastName(),
-                "message",        "Card created. Please set your PIN to activate it."
+        return ResponseEntity.status(409).body(Map.of(
+                "error", "ATM flow no longer creates cards. Ask admin to issue card, then set PIN with account number + card number."
         ));
     }
 
@@ -136,10 +108,11 @@ public class AtmAuthController {
     public ResponseEntity<?> setOwnPin(@RequestBody Map<String, String> body) {
         String cardIdStr = body.get("cardId");
         String pin       = body.get("pin");
+        String accountNumber = body.get("accountNumber");
 
-        if (cardIdStr == null || pin == null) {
+        if (cardIdStr == null || pin == null || accountNumber == null || accountNumber.isBlank()) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "cardId and pin are required"));
+                    .body(Map.of("error", "cardId, pin, and accountNumber are required"));
         }
         if (!pin.matches("\\d{4}")) {
             return ResponseEntity.badRequest()
@@ -148,6 +121,11 @@ public class AtmAuthController {
 
         Card card = cardRepository.findById(Long.parseLong(cardIdStr)).orElse(null);
         if (card == null) return ResponseEntity.notFound().build();
+
+        if (!accountNumber.equalsIgnoreCase(card.getAccount().getAccountNumber())) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Account number does not match this card"));
+        }
 
         // Safety check: only allow setting PIN if no PIN is set yet (first-time setup).
         // For PIN reset after admin unlock, the customer uses /atm/reset-pin instead.
@@ -169,6 +147,51 @@ public class AtmAuthController {
                 "message",        "PIN set successfully. Your card is now active.",
                 "maskedNumber",   "**** **** **** " + card.getCardNumber().substring(12),
                 "accountNumber",  card.getAccount().getAccountNumber()
+        ));
+    }
+
+    /**
+     * Prepare PIN setup for an already issued card.
+     * Prevents accidental new-card creation when the customer already received a card number by email.
+     */
+    @PostMapping("/prepare-own-pin")
+    public ResponseEntity<?> prepareOwnPin(@RequestBody Map<String, String> body) {
+        String accountNumber = (body.get("accountNumber") == null ? "" : body.get("accountNumber")).trim();
+
+        if (accountNumber.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber is required"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(accountNumber).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+        }
+        if (!account.isActive()) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Account is " + account.getAccountStatus()));
+        }
+
+        Card card = cardRepository.findByAccountId(account.getAccountId()).stream()
+                .filter(c -> c.getCardStatus() != CardStatus.CANCELLED)
+                .filter(c -> c.getCardStatus() != CardStatus.EXPIRED)
+                .filter(c -> !c.getExpiryDate().isBefore(LocalDate.now()))
+                .filter(c -> c.getPinHash() == null)
+                .findFirst()
+                .orElse(null);
+
+        if (card == null) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "error", "No card pending PIN setup found for this account. Ask admin to issue a card."
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "cardId", card.getCardId(),
+                "maskedNumber", "**** **** **** " + card.getCardNumber().substring(12),
+                "holderInitials", toInitials(card.getHolderName()),
+                "accountNumber", account.getAccountNumber(),
+                "message", "Card found. Set your PIN to activate it."
         ));
     }
 
@@ -295,5 +318,16 @@ public class AtmAuthController {
         cardRepository.save(card);
 
         return ResponseEntity.ok(Map.of("message", "PIN reset for card " + cardNumber));
+    }
+
+    private static String toInitials(String holderName) {
+        if (holderName == null || holderName.isBlank()) {
+            return "";
+        }
+        return Arrays.stream(holderName.trim().split("\\s+"))
+                .filter(part -> !part.isBlank())
+                .map(part -> part.substring(0, 1).toUpperCase())
+                .limit(2)
+                .reduce("", String::concat);
     }
 }

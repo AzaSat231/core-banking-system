@@ -28,6 +28,7 @@ import java.util.Set;
  *   /admin/**                       — blockchain reconciliation worker
  *   /atm/reset-pin                  — PIN reset after admin unlock
  *   /atm/create-card-for-account    — self-service card issuance (new)
+ *   /atm/prepare-own-pin            — resolve issued card for PIN setup
  *   /atm/set-own-pin                — self-service initial PIN setup (new)
  *
  * If the configured token is empty/blank, all service requests are rejected
@@ -47,6 +48,7 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
     private static final Set<String> SERVICE_PATHS = Set.of(
             "/atm/reset-pin",
             "/atm/create-card-for-account",
+            "/atm/prepare-own-pin",
             "/atm/set-own-pin"
     );
 

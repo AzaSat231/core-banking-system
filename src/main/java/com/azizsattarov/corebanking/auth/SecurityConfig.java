@@ -56,6 +56,7 @@ public class SecurityConfig {
                         // The middleware rate-limits and validates these before forwarding.
                         // Customers never call Core Banking directly — only middleware does.
                         .requestMatchers(HttpMethod.POST, "/atm/create-card-for-account").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.POST, "/atm/prepare-own-pin").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/atm/set-own-pin").hasRole("SERVICE")
 
                         // Customer PIN reset after admin unlock — middleware service token
@@ -83,6 +84,7 @@ public class SecurityConfig {
                         // ── Cards ──────────────────────────────────────────────
                         .requestMatchers(HttpMethod.GET,    "/accounts/*/cards").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST,   "/accounts/*/cards").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST,   "/accounts/*/cards/*/send-email").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH,  "/accounts/*/cards/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/accounts/*/cards/**").hasRole("ADMIN")
 

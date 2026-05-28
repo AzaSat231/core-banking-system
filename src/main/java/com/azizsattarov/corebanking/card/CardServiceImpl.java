@@ -32,10 +32,14 @@ public class CardServiceImpl implements CardService {
 
     private final CardRepository    cardRepository;
     private final AccountRepository accountRepository;
+    private final CardEmailNotificationService cardEmailNotificationService;
 
-    public CardServiceImpl(CardRepository cardRepository, AccountRepository accountRepository) {
+    public CardServiceImpl(CardRepository cardRepository,
+                           AccountRepository accountRepository,
+                           CardEmailNotificationService cardEmailNotificationService) {
         this.cardRepository    = cardRepository;
         this.accountRepository = accountRepository;
+        this.cardEmailNotificationService = cardEmailNotificationService;
     }
 
     // ── Luhn check digit ──────────────────────────────────────────────────────
@@ -125,6 +129,12 @@ public class CardServiceImpl implements CardService {
         // PIN is intentionally NOT set here.
         // The customer sets their own PIN at the ATM kiosk after card issuance.
         Card saved = cardRepository.save(card);
+        cardEmailNotificationService.sendCardIssuedEmail(
+                account.getCustomer(),
+                account,
+                saved,
+                activeCardCount > 0
+        );
         return toResponse(saved);
     }
 
@@ -171,10 +181,34 @@ public class CardServiceImpl implements CardService {
 
     @Override
     @Transactional
-    public void cancelCard(Long cardId) {
+    public void sendCardEmail(Long accountId, Long cardId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
         Card card = cardRepository.findById(cardId)
                 .orElseThrow(() -> new NotFoundException("Card not found: " + cardId));
-        card.setCardStatus(CardStatus.CANCELLED);
-        cardRepository.save(card);
+
+        if (!card.getAccount().getAccountId().equals(accountId)) {
+            throw new BadRequestException("Card does not belong to account " + accountId);
+        }
+
+        cardEmailNotificationService.sendCardIssuedEmail(
+                account.getCustomer(),
+                account,
+                card,
+                true
+        );
+    }
+
+    @Override
+    @Transactional
+    public void cancelCard(Long accountId, Long cardId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+        Card card = cardRepository.findById(cardId)
+                .orElseThrow(() -> new NotFoundException("Card not found: " + cardId));
+        if (!card.getAccount().getAccountId().equals(account.getAccountId())) {
+            throw new BadRequestException("Card does not belong to account " + accountId);
+        }
+        cardRepository.delete(card);
     }
 }
