@@ -14,4 +14,5 @@ public record TransferResponse(
         BigDecimal toNewBalance,
         LocalDateTime createdFromAt,
         LocalDateTime createdToAt
-) {}
+) {
+}
