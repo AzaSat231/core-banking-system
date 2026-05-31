@@ -38,6 +38,9 @@ public class Account {
     @Column(nullable = false)
     private AccountStatus accountStatus;
 
+    @Column(name = "fingerprint_slot_id")
+    private Integer fingerprintSlotId;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

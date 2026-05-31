@@ -30,6 +30,7 @@ services:
     environment:
       POSTGRES_USER: dbv1
       POSTGRES_PASSWORD: pass123
+      POSTGRES_DB: dbv1
       PGDATA: /data/postgres
     volumes:
       - db:/data/postgres
@@ -44,6 +45,7 @@ services:
     environment:
       POSTGRES_USER: mwuser
       POSTGRES_PASSWORD: mwpass
+      POSTGRES_DB: mwdb
       PGDATA: /data/postgres
     volumes:
       - middleware-db:/data/postgres
