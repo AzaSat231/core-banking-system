@@ -23,13 +23,16 @@ public class TransactionServiceImpl implements TransactionService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final int defaultAckTimeoutSeconds;
+    private final int reversalBatchSize;
 
     public TransactionServiceImpl(AccountRepository accountRepository,
                                   TransactionRepository transactionRepository,
-                                  @Value("${dispense.ack-timeout-seconds:30}") int defaultAckTimeoutSeconds) {
+                                  @Value("${dispense.ack-timeout-seconds:30}") int defaultAckTimeoutSeconds,
+                                  @Value("${dispense.reversal-batch-size:50}") int reversalBatchSize) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.defaultAckTimeoutSeconds = defaultAckTimeoutSeconds;
+        this.reversalBatchSize = reversalBatchSize;
     }
 
 
@@ -205,7 +208,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     public int reverseExpiredPendingDispenses() {
         List<Transaction> expired = transactionRepository.findExpiredPendingDispense(
-                LocalDateTime.now(), PageRequest.of(0, 50));
+                LocalDateTime.now(), PageRequest.of(0, reversalBatchSize));
         int reversed = 0;
         for (Transaction withdrawTx : expired) {
             reversePendingWithdraw(withdrawTx);

@@ -42,6 +42,12 @@ public class AdminTransactionController {
         return adminService.findSubmitted(limit);
     }
 
+    @GetMapping("/failed-submit")
+    public List<AdminTransactionView> failedSubmit(
+            @RequestParam(defaultValue = "50") int limit) {
+        return adminService.findFailedSubmit(limit);
+    }
+
     @GetMapping("/for-tamper-check")
     public List<AdminTransactionView> forTamperCheck(
             @RequestParam(required = false) String since,
@@ -75,5 +81,10 @@ public class AdminTransactionController {
             @RequestBody(required = false) Map<String, String> body) {
         String reason = body == null ? null : body.get("reason");
         return adminService.markTampered(transactionId, reason);
+    }
+
+    @PostMapping("/{transactionId}/retry-blockchain")
+    public AdminTransactionView retryBlockchain(@PathVariable Long transactionId) {
+        return adminService.retryBlockchainSubmit(transactionId);
     }
 }

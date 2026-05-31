@@ -33,3 +33,6 @@ build/
 .vscode/
 
 .env
+
+# Scheduled pg_dump output (keep directory via .gitkeep)
+backups/**/*.dump

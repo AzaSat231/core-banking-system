@@ -54,6 +54,66 @@ services:
     ports:
       - "5433:5432"
 
+  db-backup:
+    image: postgres:latest
+    depends_on: [db]
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: dbv1
+      PGPASSWORD: pass123
+      PGDATABASE: dbv1
+      BACKUP_DIR: /backups
+      BACKUP_PREFIX: postgres
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups/core-banking:/backups
+      - ./scripts/backup_postgres.sh:/scripts/backup_postgres.sh:ro
+    networks: [db]
+    entrypoint:
+      - bash
+      - -ec
+      - |
+        set -e
+        chmod +x /scripts/backup_postgres.sh
+        /scripts/backup_postgres.sh
+        while true; do
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+          /scripts/backup_postgres.sh
+        done
+
+  middleware-db-backup:
+    image: postgres:latest
+    depends_on: [middleware-db]
+    restart: unless-stopped
+    environment:
+      PGHOST: middleware-db
+      PGPORT: "5432"
+      PGUSER: mwuser
+      PGPASSWORD: mwpass
+      PGDATABASE: mwdb
+      BACKUP_DIR: /backups
+      BACKUP_PREFIX: postgres
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups/middleware:/backups
+      - ./scripts/backup_postgres.sh:/scripts/backup_postgres.sh:ro
+    networks: [db]
+    entrypoint:
+      - bash
+      - -ec
+      - |
+        set -e
+        chmod +x /scripts/backup_postgres.sh
+        /scripts/backup_postgres.sh
+        while true; do
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+          /scripts/backup_postgres.sh
+        done
+
 networks:
   db:
     driver: bridge

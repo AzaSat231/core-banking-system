@@ -19,6 +19,8 @@ public interface AdminTransactionService {
 
     List<AdminTransactionView> findSubmitted(int limit);
 
+    List<AdminTransactionView> findFailedSubmit(int limit);
+
     List<AdminTransactionView> findForTamperCheck(LocalDateTime since, int limit);
 
     AdminTransactionView updateBlockchain(Long transactionId, UpdateBlockchainRequest req);
@@ -26,6 +28,8 @@ public interface AdminTransactionService {
     AdminTransactionView markConfirmed(Long transactionId);
 
     AdminTransactionView markTampered(Long transactionId, String reason);
+
+    AdminTransactionView retryBlockchainSubmit(Long transactionId);
 
     AdminTransactionView findById(Long transactionId);
 }
