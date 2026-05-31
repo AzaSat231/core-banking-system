@@ -72,6 +72,28 @@ public class TransactionServiceImpl implements TransactionService {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 
+    /**
+     * Idempotency replay check. MUST be called while holding the account write lock
+     * ({@link AccountRepository#findByIdForUpdate}) so that concurrent requests for
+     * the same account are serialized and an already-committed transaction with this
+     * key is visible. Returns the original response on a replay, or {@code null} when
+     * this is a fresh request that should proceed.
+     */
+    private TransactionResponse replayIfDuplicate(String requestKey, Long accountId) {
+        if (requestKey == null || requestKey.isBlank()) {
+            return null;
+        }
+        return transactionRepository.findByRequestKey(requestKey)
+                .map(existing -> {
+                    if (!existing.getAccount().getAccountId().equals(accountId)) {
+                        throw new BadRequestException(
+                                "Idempotency key already used for a different account");
+                    }
+                    return toResponse(existing);
+                })
+                .orElse(null);
+    }
+
     private Transaction setTransaction(BigDecimal amount, BigDecimal balanceAfter,
                                        TransactionType type, TransactionStatus status,
                                        String referenceId) {
@@ -87,7 +109,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public TransactionResponse deposit(Long accountId, DepositRequest depositRequest) {
+    public TransactionResponse deposit(Long accountId, DepositRequest depositRequest, String requestKey) {
         // Fast ownership pre-check without lock
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getName().startsWith("ATM_")) {
@@ -102,6 +124,12 @@ public class TransactionServiceImpl implements TransactionService {
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
 
+        // Idempotency: under the account lock, replay the original if this key already ran.
+        TransactionResponse replay = replayIfDuplicate(requestKey, accountId);
+        if (replay != null) {
+            return replay;
+        }
+
         assertOwnership(account);
 
         if (!account.isActive())
@@ -114,6 +142,7 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = setTransaction(
                 depositRequest.amountDeposit(), balanceAfter,
                 TransactionType.DEPOSIT, TransactionStatus.APPROVED, generateReferenceId());
+        transaction.setRequestKey(requestKey);
 
         // FIX: set account on transaction, update balance, then save once via transactionRepository.
         // accountRepository.save() + transactionRepository.save() was inserting two rows
@@ -129,7 +158,8 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     public TransactionResponse withdraw(Long accountId,
                                         WithdrawRequest withdrawRequest,
-                                        Integer ackTimeoutSeconds) {
+                                        Integer ackTimeoutSeconds,
+                                        String requestKey) {
         // Fast ownership pre-check without lock
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getName().startsWith("ATM_")) {
@@ -142,6 +172,12 @@ public class TransactionServiceImpl implements TransactionService {
 
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new NotFoundException("Account Not Found: " + accountId));
+
+        // Idempotency: under the account lock, replay the original if this key already ran.
+        TransactionResponse replay = replayIfDuplicate(requestKey, accountId);
+        if (replay != null) {
+            return replay;
+        }
 
         assertOwnership(account);
 
@@ -157,6 +193,7 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = setTransaction(
                 withdrawRequest.amountWithdraw(), balanceAfter,
                 TransactionType.WITHDRAW, TransactionStatus.APPROVED, generateReferenceId());
+        transaction.setRequestKey(requestKey);
 
         int timeout = ackTimeoutSeconds != null && ackTimeoutSeconds > 0
                 ? ackTimeoutSeconds

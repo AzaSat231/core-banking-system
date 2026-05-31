@@ -8,6 +8,7 @@ import com.azizsattarov.corebanking.customer.CustomerStatus;
 import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.transaction.TransactionService;
 import com.azizsattarov.corebanking.transaction.dto.DepositRequest;
+import com.azizsattarov.corebanking.transaction.dto.TransactionResponse;
 import com.azizsattarov.corebanking.transaction.dto.TransferRequest;
 import com.azizsattarov.corebanking.transaction.dto.WithdrawRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +79,41 @@ class TransactionServiceTest extends BaseIntegrationTest {
         )
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Withdraw Amount must be less than Balance Amount");
+    }
+
+    // TEST: Idempotent deposit — a retry carrying the same request key must NOT
+    // apply the balance change twice (closes the lost-response/double-charge gap).
+    @Test
+    void deposit_shouldBeIdempotent_whenSameRequestKey() {
+        DepositRequest request = new DepositRequest(new BigDecimal("200.00"));
+        String key = "idem-deposit-001";
+
+        TransactionResponse first  = transactionService.deposit(account.getAccountId(), request, key);
+        TransactionResponse second = transactionService.deposit(account.getAccountId(), request, key);
+
+        // Same original transaction is replayed, not a new one.
+        assertThat(second.transactionId()).isEqualTo(first.transactionId());
+        assertThat(second.referenceId()).isEqualTo(first.referenceId());
+
+        // Balance moved only once: 1000 + 200, not + 400.
+        Account updated = accountRepository.findById(account.getAccountId()).get();
+        assertThat(updated.getBalance()).isEqualByComparingTo("1200.00");
+    }
+
+    // TEST: Idempotent withdraw — same key replays the original withdrawal.
+    @Test
+    void withdraw_shouldBeIdempotent_whenSameRequestKey() {
+        WithdrawRequest request = new WithdrawRequest(new BigDecimal("300.00"));
+        String key = "idem-withdraw-001";
+
+        TransactionResponse first  = transactionService.withdraw(account.getAccountId(), request, null, key);
+        TransactionResponse second = transactionService.withdraw(account.getAccountId(), request, null, key);
+
+        assertThat(second.transactionId()).isEqualTo(first.transactionId());
+
+        // Debited only once: 1000 - 300, not - 600.
+        Account updated = accountRepository.findById(account.getAccountId()).get();
+        assertThat(updated.getBalance()).isEqualByComparingTo("700.00");
     }
 
     // TEST 3: Transfer

@@ -7,8 +7,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
+
+    /** Idempotency lookup: returns the original transaction created for this key, if any. */
+    Optional<Transaction> findByRequestKey(String requestKey);
+
     @Query("SELECT t FROM Transaction t ORDER BY t.createdAt DESC")
     List<Transaction> findAllOrderByCreatedAtDesc(Pageable pageable);
 

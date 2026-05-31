@@ -20,6 +20,18 @@ public class Transaction {
     @Column(nullable = false)
     private String referenceId;
 
+    /**
+     * Idempotency key supplied by the middleware (Layer 2) for deposit/withdraw.
+     * When present, a repeat request carrying the same key replays the original
+     * transaction instead of applying a second balance mutation. This closes the
+     * "lost response → retry → double charge" window: if Core Banking commits but
+     * the response never reaches the middleware, the middleware's retry lands here
+     * with the same key and is deduplicated. Null for internal flows (reversals,
+     * transfers, admin) that do not pass a key.
+     */
+    @Column(unique = true)
+    private String requestKey;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 

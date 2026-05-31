@@ -17,9 +17,11 @@ public class TransactionController {
     @PostMapping("/{accountId}/deposit")
     public ResponseEntity<TransactionResponse> deposit (
             @PathVariable Long accountId,
-            @Valid @RequestBody DepositRequest depositRequest
+            @Valid @RequestBody DepositRequest depositRequest,
+            @RequestHeader(value = "X-Idempotency-Key", required = false)
+            String idempotencyKey
             ){
-        TransactionResponse deposited = transactionService.deposit(accountId, depositRequest);
+        TransactionResponse deposited = transactionService.deposit(accountId, depositRequest, idempotencyKey);
         return ResponseEntity.status(201).body(deposited);
     }
 
@@ -28,10 +30,12 @@ public class TransactionController {
             @PathVariable Long accountId,
             @Valid @RequestBody WithdrawRequest withdrawRequest,
             @RequestHeader(value = "X-Dispense-Ack-Timeout-Seconds", required = false)
-            Integer ackTimeoutSeconds
+            Integer ackTimeoutSeconds,
+            @RequestHeader(value = "X-Idempotency-Key", required = false)
+            String idempotencyKey
             ){
         TransactionResponse withdrawn = transactionService.withdraw(
-                accountId, withdrawRequest, ackTimeoutSeconds);
+                accountId, withdrawRequest, ackTimeoutSeconds, idempotencyKey);
         return ResponseEntity.status(201).body(withdrawn);
     }
 
