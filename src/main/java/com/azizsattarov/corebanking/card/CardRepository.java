@@ -15,4 +15,15 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     Optional<Card> findByCardNumber(String cardNumber);
 
     boolean existsByCardNumber(String cardNumber);
+
+    @Query("""
+            SELECT COUNT(c) FROM Card c
+            WHERE c.account.accountId = :accountId
+              AND c.pinHash IS NOT NULL
+              AND c.cardStatus NOT IN (
+                  com.azizsattarov.corebanking.card.CardStatus.CANCELLED,
+                  com.azizsattarov.corebanking.card.CardStatus.EXPIRED)
+              AND c.expiryDate >= CURRENT_DATE
+            """)
+    long countActiveCardsWithPin(@Param("accountId") Long accountId);
 }

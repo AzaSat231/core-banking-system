@@ -2,10 +2,14 @@ package com.azizsattarov.corebanking.admin;
 
 import com.azizsattarov.corebanking.admin.dto.AdminTransactionView;
 import com.azizsattarov.corebanking.admin.dto.UpdateBlockchainRequest;
+import com.azizsattarov.corebanking.admin.event.BlockchainSubmitFailedEvent;
+import com.azizsattarov.corebanking.exception.BadRequestException;
 import com.azizsattarov.corebanking.exception.NotFoundException;
 import com.azizsattarov.corebanking.transaction.ChainStatus;
 import com.azizsattarov.corebanking.transaction.Transaction;
 import com.azizsattarov.corebanking.transaction.TransactionRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,9 +21,15 @@ import java.util.List;
 public class AdminTransactionServiceImpl implements AdminTransactionService {
 
     private final TransactionRepository transactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
+    private final int maxSubmitAttempts;
 
-    public AdminTransactionServiceImpl(TransactionRepository transactionRepository) {
+    public AdminTransactionServiceImpl(TransactionRepository transactionRepository,
+                                       ApplicationEventPublisher eventPublisher,
+                                       @Value("${app.blockchain.max-submit-attempts:8}") int maxSubmitAttempts) {
         this.transactionRepository = transactionRepository;
+        this.eventPublisher = eventPublisher;
+        this.maxSubmitAttempts = maxSubmitAttempts;
     }
 
     @Override
@@ -54,6 +64,16 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<AdminTransactionView> findFailedSubmit(int limit) {
+        return transactionRepository
+                .findFailedSubmit(PageRequest.of(0, limit))
+                .stream()
+                .map(AdminTransactionServiceImpl::toView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<AdminTransactionView> findForTamperCheck(LocalDateTime since, int limit) {
         return transactionRepository
                 .findConfirmedSince(since, PageRequest.of(0, limit))
@@ -68,6 +88,8 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
         Transaction t = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new NotFoundException("Transaction not found: " + transactionId));
 
+        ChainStatus previousStatus = t.getChainStatus();
+
         if (req.canonicalHash() != null && !req.canonicalHash().isBlank()) {
             t.setCanonicalHash(req.canonicalHash());
         }
@@ -81,14 +103,24 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
             // Submission failed — keep status as PENDING_SUBMIT until max attempts,
             // then escalate to FAILED_SUBMIT for manual review.
             t.setLastSubmitError(req.submitError());
-            if (t.getSubmitAttempts() >= 8) {
+            if (t.getSubmitAttempts() >= maxSubmitAttempts) {
                 t.setChainStatus(ChainStatus.FAILED_SUBMIT);
             } else {
                 t.setChainStatus(ChainStatus.PENDING_SUBMIT);
             }
         }
 
-        return toView(transactionRepository.save(t));
+        Transaction saved = transactionRepository.save(t);
+        if (saved.getChainStatus() == ChainStatus.FAILED_SUBMIT
+                && previousStatus != ChainStatus.FAILED_SUBMIT) {
+            eventPublisher.publishEvent(new BlockchainSubmitFailedEvent(
+                    saved.getTransactionId(),
+                    saved.getAccount() != null ? saved.getAccount().getAccountNumber() : null,
+                    saved.getLastSubmitError(),
+                    saved.getSubmitAttempts()
+            ));
+        }
+        return toView(saved);
     }
 
     @Override
@@ -107,6 +139,22 @@ public class AdminTransactionServiceImpl implements AdminTransactionService {
                 .orElseThrow(() -> new NotFoundException("Transaction not found: " + transactionId));
         t.setChainStatus(ChainStatus.TAMPERED);
         t.setLastSubmitError(reason);
+        return toView(transactionRepository.save(t));
+    }
+
+    @Override
+    @Transactional
+    public AdminTransactionView retryBlockchainSubmit(Long transactionId) {
+        Transaction t = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new NotFoundException("Transaction not found: " + transactionId));
+        if (t.getChainStatus() != ChainStatus.FAILED_SUBMIT) {
+            throw new BadRequestException(
+                    "Only FAILED_SUBMIT transactions can be retried; current status: " + t.getChainStatus());
+        }
+        t.setSubmitAttempts(0);
+        t.setChainStatus(ChainStatus.PENDING_SUBMIT);
+        t.setLastSubmitError(null);
+        t.setBlockchainTx(null);
         return toView(transactionRepository.save(t));
     }
 

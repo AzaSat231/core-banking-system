@@ -30,6 +30,7 @@ import java.util.Set;
  *   /atm/create-card-for-account    — self-service card issuance (new)
  *   /atm/prepare-own-pin            — resolve issued card for PIN setup
  *   /atm/set-own-pin                — self-service initial PIN setup (new)
+ *   /atm/register-fingerprint       — first-time fingerprint enrollment
  *
  * If the configured token is empty/blank, all service requests are rejected
  * (defense-in-default). Set the value via the MIDDLEWARE_SERVICE_TOKEN
@@ -49,7 +50,8 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
             "/atm/reset-pin",
             "/atm/create-card-for-account",
             "/atm/prepare-own-pin",
-            "/atm/set-own-pin"
+            "/atm/set-own-pin",
+            "/atm/register-fingerprint"
     );
 
     public ServiceTokenAuthFilter(

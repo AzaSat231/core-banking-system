@@ -313,8 +313,10 @@ This enforces a globally consistent lock-acquisition order across all threads, e
 ```bash
 git clone https://github.com/AzaSat231/core-banking-system.git
 cd core-banking-system
-docker compose up -d
+docker compose up -d db middleware-db db-backup middleware-db-backup
 ```
+
+Scheduled dumps land in `backups/` (see [docs/ops/backup-restore.md](docs/ops/backup-restore.md)).
 
 | Parameter | Value |
 |---|---|

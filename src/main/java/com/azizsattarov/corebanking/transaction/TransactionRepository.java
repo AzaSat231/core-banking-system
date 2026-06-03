@@ -43,6 +43,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             """)
     List<Transaction> findSubmitted(Pageable pageable);
 
+    @Query("""
+            SELECT t FROM Transaction t
+            WHERE t.chainStatus = com.azizsattarov.corebanking.transaction.ChainStatus.FAILED_SUBMIT
+            ORDER BY t.createdAt ASC
+            """)
+    List<Transaction> findFailedSubmit(Pageable pageable);
+
     /**
      * Confirmed transactions to run periodic tamper checks on.
      */

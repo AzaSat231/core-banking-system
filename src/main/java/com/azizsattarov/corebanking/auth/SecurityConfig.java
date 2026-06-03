@@ -44,7 +44,7 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/api-docs/**",
                                 "/v3/api-docs/**"
-                        ).hasRole("ADMIN")
+                        ).permitAll()
 
                         // ── ATM public endpoints ───────────────────────────────
                         // Card login and resolve — called by middleware before a session exists
@@ -58,6 +58,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/atm/create-card-for-account").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/atm/prepare-own-pin").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/atm/set-own-pin").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.POST, "/atm/register-fingerprint").hasRole("SERVICE")
 
                         // Customer PIN reset after admin unlock — middleware service token
                         .requestMatchers(HttpMethod.POST, "/atm/reset-pin").hasRole("SERVICE")

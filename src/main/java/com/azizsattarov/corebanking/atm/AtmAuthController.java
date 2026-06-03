@@ -8,13 +8,15 @@ import com.azizsattarov.corebanking.card.CardRepository;
 import com.azizsattarov.corebanking.card.CardService;
 import com.azizsattarov.corebanking.card.CardStatus;
 import com.azizsattarov.corebanking.card.dto.IssueCardRequest;
+import com.azizsattarov.corebanking.atm.dto.PrepareOwnPinResponse;
+import com.azizsattarov.corebanking.atm.dto.RegisterFingerprintRequest;
+import com.azizsattarov.corebanking.atm.dto.RegisterFingerprintResponse;
 import com.azizsattarov.corebanking.customer.Customer;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.Map;
 
 @RestController
@@ -186,12 +188,50 @@ public class AtmAuthController {
             ));
         }
 
-        return ResponseEntity.ok(Map.of(
-                "cardId", card.getCardId(),
-                "maskedNumber", "**** **** **** " + card.getCardNumber().substring(12),
-                "holderInitials", toInitials(card.getHolderName()),
-                "accountNumber", account.getAccountNumber(),
-                "message", "Card found. Set your PIN to activate it."
+        boolean hadExistingCards = cardRepository.countActiveCardsWithPin(account.getAccountId()) > 0;
+
+        return ResponseEntity.ok(new PrepareOwnPinResponse(
+                card.getCardId(),
+                "**** **** **** " + card.getCardNumber().substring(12),
+                account.getAccountNumber(),
+                hadExistingCards,
+                account.getFingerprintSlotId()
+        ));
+    }
+
+    /**
+     * First-time fingerprint enrollment for an account.
+     * Stores the sensor slot id assigned by the ATM during enroll.
+     */
+    @PostMapping("/register-fingerprint")
+    public ResponseEntity<?> registerFingerprint(@RequestBody RegisterFingerprintRequest body) {
+        String accountNumber = body.accountNumber() == null ? "" : body.accountNumber().trim();
+
+        if (accountNumber.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber is required"));
+        }
+        if (body.fingerprintSlotId() < 0) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "fingerprintSlotId must be >= 0"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(accountNumber).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+        }
+        if (account.getFingerprintSlotId() != null) {
+            return ResponseEntity.status(409)
+                    .body(Map.of("error", "Fingerprint already registered for this account"));
+        }
+
+        account.setFingerprintSlotId(body.fingerprintSlotId());
+        accountRepository.save(account);
+
+        return ResponseEntity.ok(new RegisterFingerprintResponse(
+                "ok",
+                "Fingerprint registered.",
+                body.fingerprintSlotId()
         ));
     }
 
@@ -318,16 +358,5 @@ public class AtmAuthController {
         cardRepository.save(card);
 
         return ResponseEntity.ok(Map.of("message", "PIN reset for card " + cardNumber));
-    }
-
-    private static String toInitials(String holderName) {
-        if (holderName == null || holderName.isBlank()) {
-            return "";
-        }
-        return Arrays.stream(holderName.trim().split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .map(part -> part.substring(0, 1).toUpperCase())
-                .limit(2)
-                .reduce("", String::concat);
     }
 }
