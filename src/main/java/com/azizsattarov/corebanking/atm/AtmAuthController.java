@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -291,14 +292,15 @@ public class AtmAuthController {
 
         String token = jwtUtil.generateToken(userDetails);
 
-        return ResponseEntity.ok(Map.of(
-                "token",         token,
-                "cardId",        card.getCardId(),
-                "accountId",     account.getAccountId(),
-                "accountNumber", account.getAccountNumber(),
-                "customerName",  customer.getFirstName() + " " + customer.getLastName(),
-                "balance",       account.getBalance()
-        ));
+        Map<String, Object> loginBody = new LinkedHashMap<>();
+        loginBody.put("token", token);
+        loginBody.put("cardId", card.getCardId());
+        loginBody.put("accountId", account.getAccountId());
+        loginBody.put("accountNumber", account.getAccountNumber());
+        loginBody.put("customerName", customer.getFirstName() + " " + customer.getLastName());
+        loginBody.put("balance", account.getBalance());
+        loginBody.put("fingerprintSlotId", account.getFingerprintSlotId());
+        return ResponseEntity.ok(loginBody);
     }
 
     // ── Admin: Set PIN (ROLE_ADMIN) ────────────────────────────────────────────
