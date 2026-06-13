@@ -77,11 +77,10 @@ services:
       - -ec
       - |
         set -e
-        chmod +x /scripts/backup_postgres.sh
-        /scripts/backup_postgres.sh
+        bash /scripts/backup_postgres.sh
         while true; do
           sleep "$${BACKUP_INTERVAL_SECONDS}"
-          /scripts/backup_postgres.sh
+          bash /scripts/backup_postgres.sh
         done
 
   middleware-db-backup:
@@ -107,11 +106,10 @@ services:
       - -ec
       - |
         set -e
-        chmod +x /scripts/backup_postgres.sh
-        /scripts/backup_postgres.sh
+        bash /scripts/backup_postgres.sh
         while true; do
           sleep "$${BACKUP_INTERVAL_SECONDS}"
-          /scripts/backup_postgres.sh
+          bash /scripts/backup_postgres.sh
         done
 
 networks:
