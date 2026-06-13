@@ -59,6 +59,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/atm/prepare-own-pin").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/atm/set-own-pin").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/atm/register-fingerprint").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.GET,  "/atm/account-fingerprint").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.GET,  "/atm/resolve-account-card").hasRole("SERVICE")
 
                         // Customer PIN reset after admin unlock — middleware service token
                         .requestMatchers(HttpMethod.POST, "/atm/reset-pin").hasRole("SERVICE")

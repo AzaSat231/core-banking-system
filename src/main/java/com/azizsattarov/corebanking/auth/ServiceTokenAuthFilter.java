@@ -31,6 +31,7 @@ import java.util.Set;
  *   /atm/prepare-own-pin            — resolve issued card for PIN setup
  *   /atm/set-own-pin                — self-service initial PIN setup (new)
  *   /atm/register-fingerprint       — first-time fingerprint enrollment
+ *   /atm/account-fingerprint        — lookup slot id for PIN reset verify (GET)
  *
  * If the configured token is empty/blank, all service requests are rejected
  * (defense-in-default). Set the value via the MIDDLEWARE_SERVICE_TOKEN
@@ -46,12 +47,17 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
 
     // Exact-match paths that require the service token (method-agnostic check
     // is fine here; method restrictions are enforced by SecurityConfig).
-    private static final Set<String> SERVICE_PATHS = Set.of(
+    private static final Set<String> SERVICE_POST_PATHS = Set.of(
             "/atm/reset-pin",
             "/atm/create-card-for-account",
             "/atm/prepare-own-pin",
             "/atm/set-own-pin",
             "/atm/register-fingerprint"
+    );
+
+    private static final Set<String> SERVICE_GET_PATHS = Set.of(
+            "/atm/account-fingerprint",
+            "/atm/resolve-account-card"
     );
 
     public ServiceTokenAuthFilter(
@@ -69,8 +75,10 @@ public class ServiceTokenAuthFilter extends OncePerRequestFilter {
         String method = request.getMethod();
 
         boolean adminPath   = path != null && path.startsWith("/admin/");
-        boolean servicePath = path != null && SERVICE_PATHS.contains(path)
-                && "POST".equalsIgnoreCase(method);
+        boolean servicePath = path != null && (
+                ("POST".equalsIgnoreCase(method) && SERVICE_POST_PATHS.contains(path))
+                || ("GET".equalsIgnoreCase(method) && SERVICE_GET_PATHS.contains(path))
+        );
 
         if (!adminPath && !servicePath) {
             chain.doFilter(request, response);

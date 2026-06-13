@@ -136,8 +136,32 @@ public class CustomerServiceImpl implements CustomerService{
             account.setAccountStatus(AccountStatus.CLOSED);
         });
 
+        releaseUniqueFields(customer);
         customer.setDeletedAt(now);
         customer.setCustomerStatus(CustomerStatus.CLOSED);
         customerRepository.save(customer);
+    }
+
+    /**
+     * Soft-deleted rows stay in the table for audit. Unique columns (email, nationalId,
+     * phoneNumber) would still block re-registration unless we suffix them on delete.
+     */
+    private static void releaseUniqueFields(Customer customer) {
+        String tag = ".deleted." + customer.getCustomerId() + "." + System.nanoTime();
+        customer.setEmail(suffixForUnique(customer.getEmail(), tag));
+        customer.setNationalId(suffixForUnique(customer.getNationalId(), tag));
+        customer.setPhoneNumber(suffixForUnique(customer.getPhoneNumber(), tag));
+    }
+
+    private static String suffixForUnique(String value, String suffix) {
+        if (value == null || value.isBlank()) {
+            return "removed" + suffix;
+        }
+        String combined = value + suffix;
+        int maxLen = 255;
+        if (combined.length() <= maxLen) {
+            return combined;
+        }
+        return value.substring(0, Math.max(1, maxLen - suffix.length())) + suffix;
     }
 }

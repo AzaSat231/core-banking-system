@@ -8,9 +8,11 @@ import com.azizsattarov.corebanking.card.CardRepository;
 import com.azizsattarov.corebanking.card.CardService;
 import com.azizsattarov.corebanking.card.CardStatus;
 import com.azizsattarov.corebanking.card.dto.IssueCardRequest;
+import com.azizsattarov.corebanking.atm.dto.AccountFingerprintResponse;
 import com.azizsattarov.corebanking.atm.dto.PrepareOwnPinResponse;
 import com.azizsattarov.corebanking.atm.dto.RegisterFingerprintRequest;
 import com.azizsattarov.corebanking.atm.dto.RegisterFingerprintResponse;
+import com.azizsattarov.corebanking.atm.dto.ResolveAccountCardResponse;
 import com.azizsattarov.corebanking.customer.Customer;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -61,6 +63,41 @@ public class AtmAuthController {
 
         return ResponseEntity.ok(Map.of(
                 "accountNumber", card.getAccount().getAccountNumber()
+        ));
+    }
+
+    /**
+     * Resolve account number to an active card with PIN set (PIN reset after admin unlock).
+     */
+    @GetMapping("/resolve-account-card")
+    public ResponseEntity<?> resolveAccountCard(@RequestParam String accountNumber) {
+        String normalized = accountNumber == null ? "" : accountNumber.trim();
+        if (normalized.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber is required"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(normalized).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+        }
+
+        Card card = cardRepository.findByAccountId(account.getAccountId()).stream()
+                .filter(c -> c.getCardStatus() != CardStatus.CANCELLED)
+                .filter(c -> c.getCardStatus() != CardStatus.EXPIRED)
+                .filter(c -> !c.getExpiryDate().isBefore(LocalDate.now()))
+                .filter(c -> c.getPinHash() != null)
+                .findFirst()
+                .orElse(null);
+
+        if (card == null) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "error", "No active card with PIN found for this account"));
+        }
+
+        return ResponseEntity.ok(new ResolveAccountCardResponse(
+                account.getAccountNumber(),
+                card.getCardNumber()
         ));
     }
 
@@ -233,6 +270,29 @@ public class AtmAuthController {
                 "ok",
                 "Fingerprint registered.",
                 body.fingerprintSlotId()
+        ));
+    }
+
+    /**
+     * Return fingerprint slot for an account (middleware / PIN reset flow).
+     * Requires ROLE_SERVICE — not exposed to customers directly.
+     */
+    @GetMapping("/account-fingerprint")
+    public ResponseEntity<?> accountFingerprint(@RequestParam String accountNumber) {
+        String normalized = accountNumber == null ? "" : accountNumber.trim();
+        if (normalized.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "accountNumber is required"));
+        }
+
+        Account account = accountRepository.findByAccountNumber(normalized).orElse(null);
+        if (account == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+        }
+
+        return ResponseEntity.ok(new AccountFingerprintResponse(
+                account.getAccountNumber(),
+                account.getFingerprintSlotId()
         ));
     }
 
